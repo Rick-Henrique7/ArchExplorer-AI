@@ -55,25 +55,6 @@
 
 ---
 
-## Screenshots
-
-<p align="center">
-  <img src="./assets/screenshot-app.png" alt="Tela principal" width="45%">
-  &nbsp;&nbsp;
-  <img src="./assets/screenshot-idle.png" alt="Estado inicial" width="45%">
-</p>
-
-<p align="center">
-  <em>Esquerda: arquivo aberto no editor + análise renderizada no visualizer (markdown + Mermaid).<br>
-  Direita: estado idle aguardando o usuário clicar em <b>Analisar</b>.</em>
-</p>
-
-> **Adicionando mais screenshots:** basta dropar um arquivo `.png` em
-> [`assets/`](./assets) e referenciar aqui com `<img src="./assets/seu-arquivo.png" ...>`.
-> Tamanho recomendado: **1280×800 px** (a janela padrão do app).
-
----
-
 ## Proposta
 
 O **ArchExplorer AI** é uma ferramenta desktop de produtividade para
