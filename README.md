@@ -2,16 +2,75 @@
 
 > **Análise, visualização e geração de arquitetura de software — tudo num IDE desktop, tudo offline, tudo no seu PC.**
 
-[![Status](https://img.shields.io/badge/status-pre--alpha-orange?style=for-the-badge)](https://github.com/Rick-Henrique7/arch-explorer-ai)
-[![License](https://img.shields.io/github/license/Rick-Henrique7/arch-explorer-ai?style=for-the-badge)](./LICENSE)
-[![Latest release](https://img.shields.io/github/v/release/Rick-Henrique7/arch-explorer-ai?style=for-the-badge&include_prereleases)](https://github.com/Rick-Henrique7/arch-explorer-ai/releases)
-[![CI](https://img.shields.io/github/actions/workflow/status/Rick-Henrique7/arch-explorer-ai/ci.yml?style=for-the-badge&label=ci)](https://github.com/Rick-Henrique7/arch-explorer-ai/actions)
-[![Tests](https://img.shields.io/badge/tests-334%20passed-brightgreen?style=for-the-badge)](#testes)
-[![Coverage](https://img.shields.io/badge/coverage-86%25-brightgreen?style=for-the-badge)](#testes)
-[![Python](https://img.shields.io/badge/python-3.10%E2%80%933.13-blue?style=for-the-badge)](https://www.python.org/)
-[![Qt](https://img.shields.io/badge/Qt-PySide6-41CD52?style=for-the-badge&logo=qt&logoColor=white)](https://doc.qt.io/qtforpython-6/)
-[![LLM](https://img.shields.io/badge/LLM-Qwen%202.5%20Coder-purple?style=for-the-badge)](https://ollama.com/library/qwen2.5-coder)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=for-the-badge)](#quickstart)
+<p align="center">
+  <img src="./assets/screenshot-app.png" alt="ArchExplorer AI — janela principal com análise de arquivo" width="900">
+  <br>
+  <em>Janela principal — Explorer, Editor, Visualizer com resposta da IA em PT-BR</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Rick-Henrique7/ArchExplorer-AI/actions">
+    <img src="https://img.shields.io/github/actions/workflow/status/Rick-Henrique7/ArchExplorer-AI/ci.yml?style=for-the-badge&label=ci&logo=github" alt="CI">
+  </a>
+  <a href="./LICENSE">
+    <img src="https://img.shields.io/github/license/Rick-Henrique7/ArchExplorer-AI?style=for-the-badge" alt="License">
+  </a>
+  <a href="https://github.com/Rick-Henrique7/ArchExplorer-AI/releases">
+    <img src="https://img.shields.io/github/v/release/Rick-Henrique7/ArchExplorer-AI?style=for-the-badge&include_prereleases" alt="Release">
+  </a>
+  <a href="#testes">
+    <img src="https://img.shields.io/badge/tests-334%20passed-brightgreen?style=for-the-badge" alt="Tests">
+  </a>
+  <a href="#testes">
+    <img src="https://img.shields.io/badge/coverage-86%25-brightgreen?style=for-the-badge" alt="Coverage">
+  </a>
+  <a href="https://www.python.org/">
+    <img src="https://img.shields.io/badge/python-3.10%E2%80%933.13-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+  </a>
+  <a href="https://doc.qt.io/qtforpython-6/">
+    <img src="https://img.shields.io/badge/Qt-PySide6-41CD52?style=for-the-badge&logo=qt&logoColor=white" alt="Qt">
+  </a>
+  <a href="https://ollama.com/library/qwen2.5-coder">
+    <img src="https://img.shields.io/badge/LLM-Qwen%202.5%20Coder-purple?style=for-the-badge" alt="LLM">
+  </a>
+  <a href="#quickstart">
+    <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Platform">
+  </a>
+  <a href="https://github.com/Rick-Henrique7/ArchExplorer-AI">
+    <img src="https://img.shields.io/badge/status-pre--alpha-orange?style=for-the-badge" alt="Status">
+  </a>
+</p>
+
+<p align="center">
+  <a href="#quickstart"><strong>Começar agora</strong></a>
+  ·
+  <a href="#arquitetura"><strong>Arquitetura</strong></a>
+  ·
+  <a href="#testes"><strong>Testes</strong></a>
+  ·
+  <a href="#workflow-de-desenvolvimento"><strong>Workflow</strong></a>
+  ·
+  <a href="https://github.com/Rick-Henrique7/ArchExplorer-AI/issues">Issues</a>
+</p>
+
+---
+
+## Screenshots
+
+<p align="center">
+  <img src="./assets/screenshot-app.png" alt="Tela principal" width="45%">
+  &nbsp;&nbsp;
+  <img src="./assets/screenshot-idle.png" alt="Estado inicial" width="45%">
+</p>
+
+<p align="center">
+  <em>Esquerda: arquivo aberto no editor + análise renderizada no visualizer (markdown + Mermaid).<br>
+  Direita: estado idle aguardando o usuário clicar em <b>Analisar</b>.</em>
+</p>
+
+> **Adicionando mais screenshots:** basta dropar um arquivo `.png` em
+> [`assets/`](./assets) e referenciar aqui com `<img src="./assets/seu-arquivo.png" ...>`.
+> Tamanho recomendado: **1280×800 px** (a janela padrão do app).
 
 ---
 
