@@ -9,9 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Rick-Henrique7/ArchExplorer-AI/actions">
-    <img src="https://img.shields.io/github/actions/workflow/status/Rick-Henrique7/ArchExplorer-AI/ci.yml?style=for-the-badge&label=ci&logo=github" alt="CI">
-  </a>
+
+
   <a href="./LICENSE">
     <img src="https://img.shields.io/github/license/Rick-Henrique7/ArchExplorer-AI?style=for-the-badge" alt="License">
   </a>
