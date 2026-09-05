@@ -67,4 +67,5 @@ $RECYCLE.BIN/
 *.tmp
 *.bak
 .tmp_*.py
+screenshot-*.png
 .session/

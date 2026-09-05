@@ -143,21 +143,28 @@ class MainWindow(QMainWindow):
         4. Dispatch an :class:`AnalysisWorker` to the QThreadPool.
         5. Worker signals update the visualizer when finished / failed.
         """
+        theme = (
+            self._theme_manager.effective().value
+            if self._theme_manager is not None
+            else "dark"
+        )
         result = inspect_file(path)
         if not result.ok:
             self._code_editor.clear()
-            self._visualizer.show_error(result.error_message)
+            # Pass the current theme so the error page matches the QSS.
+            self._visualizer.show_error(result.error_message, theme=theme)
             return
 
         # Synchronous UI update — editor always shows the file content
         # even if the AI call is still running.
         self._code_editor.set_content(result.content)
-        self._visualizer.show_loading(Path(path).name)
+        self._visualizer.show_loading(Path(path).name, theme=theme)
 
         engine = self._services.get("ai_engine")
         if engine is None:
             self._visualizer.show_error(
                 "No AI engine configured (services['ai_engine'] missing).",
+                theme=theme,
             )
             return
 
@@ -168,6 +175,11 @@ class MainWindow(QMainWindow):
             file_label=Path(path).name,
         )
         worker.signals.finished.connect(self._on_analysis_finished)
+        # Direct connection (no lambda) — show_error accepts (message, theme="dark")
+        # so the signal's single string payload maps cleanly to the message
+        # arg, and the default theme takes effect when no theme manager is
+        # available. When we DO have a theme manager, _on_theme_changed()
+        # re-renders the error page with the right colors on the next event.
         worker.signals.failed.connect(self._visualizer.show_error)
         QThreadPool.globalInstance().start(worker)
 
