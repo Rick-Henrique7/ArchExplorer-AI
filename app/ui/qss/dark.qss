@@ -17,6 +17,12 @@ QTreeView {
     selection-color: #ffffff;
     border: none;
     outline: 0;
+    padding: 4px;
+}
+
+QTreeView::item {
+    padding: 2px 0;
+    border: none;
 }
 
 QTreeView::item:hover {
@@ -39,6 +45,7 @@ QPlainTextEdit {
     selection-background-color: #264f78;
     selection-color: #ffffff;
     border: none;
+    padding: 4px;
 }
 
 /* --- Splitter --------------------------------------------------- */

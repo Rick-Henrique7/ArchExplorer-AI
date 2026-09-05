@@ -12,7 +12,7 @@ from app.services import (
     AIEngine,
     MockAIProvider,
 )
-from app.ui.analysis_worker import AnalysisWorker
+from app.ui.analysis_worker import AIEditWorker, AnalysisWorker, ChatWorker
 
 
 def test_worker_emits_finished_with_provider_response() -> None:
@@ -120,3 +120,134 @@ def test_worker_accepts_optional_file_label() -> None:
     worker.signals.finished.connect(captured.append)
     worker.run()
     assert len(captured) == 1
+
+
+# ---------------------------------------------------------------------------
+# AIEditWorker (Change 005)
+# ---------------------------------------------------------------------------
+
+
+def test_ai_edit_worker_emits_new_content() -> None:
+    provider = MockAIProvider({"User instruction:": "def foo():\n    pass\n"})
+    engine = AIEngine(provider)
+    worker = AIEditWorker(
+        ai_engine=engine,
+        current_content="x = 1",
+        instruction="rename x to y",
+        file_type="python",
+        file_path="/tmp/x.py",
+    )
+    captured: list[str] = []
+    worker.signals.finished.connect(captured.append)
+    worker.run()
+    assert len(captured) == 1
+    assert "def foo" in captured[0]
+
+
+def test_ai_edit_worker_emits_failed_on_ai_error() -> None:
+    class FailingProvider:
+        def generate(self, prompt, *, system=None, temperature=None):
+            raise AIServiceUnavailableError("ollama down")
+
+    engine = AIEngine(FailingProvider())
+    worker = AIEditWorker(
+        ai_engine=engine,
+        current_content="x",
+        instruction="do something",
+        file_type="python",
+    )
+    captured: list[str] = []
+    worker.signals.failed.connect(captured.append)
+    worker.run()
+    assert len(captured) == 1
+    assert "AI service unavailable" in captured[0]
+
+
+def test_ai_edit_worker_emits_failed_on_unexpected_error() -> None:
+    class ExplodingProvider:
+        def generate(self, prompt, *, system=None, temperature=None):
+            raise RuntimeError("kaboom")
+
+    engine = AIEngine(ExplodingProvider())
+    worker = AIEditWorker(
+        ai_engine=engine,
+        current_content="x",
+        instruction="do",
+        file_type="python",
+    )
+    captured: list[str] = []
+    worker.signals.failed.connect(captured.append)
+    worker.run()
+    assert len(captured) == 1
+    assert "RuntimeError" in captured[0]
+
+
+# ---------------------------------------------------------------------------
+# ChatWorker (Change 005)
+# ---------------------------------------------------------------------------
+
+
+def test_chat_worker_emits_response() -> None:
+    provider = MockAIProvider({"User:": "Hi there!"})
+    engine = AIEngine(provider)
+    worker = ChatWorker(
+        ai_engine=engine,
+        prompt="User: hello\nAssistant:",
+        user_msg="hello",
+    )
+    captured: list[str] = []
+    worker.signals.finished.connect(captured.append)
+    worker.run()
+    assert len(captured) == 1
+    assert captured[0] == "Hi there!"
+
+
+def test_chat_worker_emits_failed_on_ai_error() -> None:
+    class FailingProvider:
+        def generate(self, prompt, *, system=None, temperature=None):
+            raise AIServiceUnavailableError("refused")
+
+    engine = AIEngine(FailingProvider())
+    worker = ChatWorker(
+        ai_engine=engine,
+        prompt="User: hi\nAssistant:",
+        user_msg="hi",
+    )
+    captured: list[str] = []
+    worker.signals.failed.connect(captured.append)
+    worker.run()
+    assert len(captured) == 1
+    assert "AI service unavailable" in captured[0]
+
+
+def test_chat_worker_emits_failed_on_unexpected_error() -> None:
+    class ExplodingProvider:
+        def generate(self, prompt, *, system=None, temperature=None):
+            raise ValueError("bad prompt")
+
+    engine = AIEngine(ExplodingProvider())
+    worker = ChatWorker(
+        ai_engine=engine,
+        prompt="x",
+        user_msg="x",
+    )
+    captured: list[str] = []
+    worker.signals.failed.connect(captured.append)
+    worker.run()
+    assert len(captured) == 1
+    assert "ValueError" in captured[0]
+
+
+def test_chat_worker_uses_conversational_temperature() -> None:
+    """Chat replies should use a slightly higher temperature than edits (0.3)."""
+    captured: dict = {}
+
+    class _Capture:
+        def generate(self, prompt, *, system=None, temperature=None):
+            captured["temperature"] = temperature
+            return "ok"
+
+    engine = AIEngine(_Capture())
+    worker = ChatWorker(ai_engine=engine, prompt="x", user_msg="x")
+    worker.run()
+    assert captured["temperature"] == 0.3

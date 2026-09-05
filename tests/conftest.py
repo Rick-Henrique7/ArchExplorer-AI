@@ -13,6 +13,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QApplication
 
 
@@ -22,6 +23,11 @@ def qapp() -> QApplication:
     app = QApplication.instance()
     if app is None:
         app = QApplication([])
+        # Set org/app name so QSettings() inside MainWindow and friends
+        # has a stable target. These match app/main.py; tests that need
+        # a private INI file pass their own QSettings explicitly.
+        QCoreApplication.setOrganizationName("ArchExplorer-Test")
+        QCoreApplication.setApplicationName("ArchExplorer-AI-Test")
     yield app
     # Do not call app.quit() — leaving the app alive across the session
     # is the documented pattern and avoids teardown-order surprises.

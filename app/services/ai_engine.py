@@ -215,6 +215,22 @@ Output ONLY the Mermaid.js code inside a ```mermaid``` block. No explanations, n
 """
 
 
+EDIT_FILE_PROMPT: Final[str] = """You are an expert code editor.
+Apply the requested change to the following {file_type} code.
+
+User instruction:
+{instruction}
+
+Original code:
+```
+{code_content}
+```
+
+Output the COMPLETE modified file. No explanations, no markdown fences, no preamble.
+The output MUST be a drop-in replacement of the original — same encoding, same line endings.
+"""
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -266,4 +282,23 @@ class AIEngine:
     def extract_uml_structure(self, code_content: str) -> str:
         """Ask the LLM to convert a code file into Mermaid.js syntax."""
         full_prompt = EXTRACT_UML_STRUCTURE_PROMPT.format(code_content=code_content)
+        return self._provider.generate(full_prompt, temperature=0.1)
+
+    def edit_file(
+        self,
+        content: str,
+        instruction: str,
+        file_type: str,
+    ) -> str:
+        """Ask the LLM to apply ``instruction`` to ``content``.
+
+        Returns the raw LLM response (intended to overwrite the file).
+        Lower temperature than ``analyze_architecture`` because edits
+        need to be deterministic to not nuke working code on noise.
+        """
+        full_prompt = EDIT_FILE_PROMPT.format(
+            file_type=file_type,
+            instruction=instruction,
+            code_content=content,
+        )
         return self._provider.generate(full_prompt, temperature=0.1)

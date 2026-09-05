@@ -299,3 +299,57 @@ def test_engine_propagates_provider_errors() -> None:
         engine = AIEngine(OllamaProvider())
         with pytest.raises(AIServiceUnavailableError):
             engine.extract_uml_structure("class A: pass")
+
+
+# ---------------------------------------------------------------------------
+# AIEngine.edit_file (Change 005)
+# ---------------------------------------------------------------------------
+
+
+def test_engine_edit_file_uses_prompt_template() -> None:
+    """The 'edit_file' pipeline builds a prompt with file_type, instruction, code."""
+    provider = MockAIProvider({"User instruction:": "EDITED"})
+    engine = AIEngine(provider)
+    out = engine.edit_file("def foo():\n    pass\n", "add docstring", "python")
+    assert out == "EDITED"
+
+
+def test_engine_edit_file_passes_all_three_args_into_prompt() -> None:
+    """A fixture matching the file_type substring proves all 3 are in the prompt."""
+    provider = MockAIProvider({"python": "PY_OUT"})
+    engine = AIEngine(provider)
+    out = engine.edit_file("x = 1\n", "rename", "python")
+    assert out == "PY_OUT"
+
+
+def test_engine_edit_file_uses_low_temperature() -> None:
+    """Edits need to be deterministic; the engine must pass a low temperature."""
+    captured: dict = {}
+
+    class _Capture:
+        def generate(self, prompt, *, system=None, temperature=None):
+            captured["temperature"] = temperature
+            captured["prompt"] = prompt
+            return "ok"
+
+    engine = AIEngine(_Capture())
+    engine.edit_file("x", "y", "python")
+    assert captured["temperature"] == 0.1
+    # The prompt should reference the original code and the instruction.
+    assert "x" in captured["prompt"]
+    assert "y" in captured["prompt"]
+
+
+def test_engine_edit_file_works_with_ollama_mocked() -> None:
+    """End-to-end: edit_file against a mocked Ollama HTTP response."""
+    with requests_mock.Mocker() as m:
+        m.post(
+            "http://localhost:11434/api/generate",
+            text=json.dumps({"response": "def foo():\n    \"\"\"New docstring.\"\"\"\n    pass\n"}),
+        )
+        engine = AIEngine(OllamaProvider())
+        out = engine.edit_file("def foo():\n    pass\n", "add docstring", "python")
+        assert "docstring" in out
+        # And the request must have included the low temperature.
+        sent = m.last_request.json()
+        assert sent["options"]["temperature"] == 0.1

@@ -147,3 +147,170 @@ file_selected(file_path: str): Emitido pelo FileExplorer -> Notifica CodeEditor 
 code_changed(content: str): Emitido pelo CodeEditor -> Atualiza o modelo em memória e revalida o diagrama com delay de digitação (debounce).
 
 diagram_ready(html_content: str): Emitido pelo serviço em background -> Atualiza o HTML do QWebEngineView.
+
+---
+
+## 4. Recursos Interativos (Change 005)
+
+Esta seção documenta os recursos adicionados na **Change 005 — Interactive features**.
+
+### 4.1. Chat com a IA no Painel Direito
+
+O `VisualizerPanel` agora tem uma caixa de texto multi-linha no rodapé
+que permite ao usuário conversar com a IA sobre o arquivo carregado.
+
+**Layout:**
+
+```text
++-----------------------------------+
+| Render area (markdown / spinner) |
+| ...                               |
++-----------------------------------+
+| [History ▾]              [Clear]  |  ← histórico (até 50 turns)
++-----------------------------------+
+| > Ask about this file...          |  ← input multi-linha
+| (Enter = enviar, Shift+Enter = \n) |
++-----------------------------------+
+|                         [Send →]   |
++-----------------------------------+
+```
+
+**Comportamento:**
+
+- Enter envia a mensagem; Shift+Enter insere nova linha
+- Cada turno (user, ai) é salvo em `chat_history` (LRU, max 50)
+- O `QComboBox` no topo permite re-renderizar respostas anteriores
+- "Clear" reseta o histórico e volta ao estado idle
+- O prompt enviado para a IA inclui o caminho do arquivo e o conteúdo
+  do arquivo carregado como contexto
+
+### 4.2. Animação de Loading (Spinner)
+
+O placeholder estático "Analyzing..." é substituído por um **spinner SVG**
+animado por CSS `@keyframes spin` (1.2s, linear, infinite). Renderizado
+inline no HTML da página do visualizer — zero dependência extra.
+
+```svg
+<svg viewBox="0 0 50 50" width="48" height="48" class="spinner">
+  <circle cx="25" cy="25" r="20" fill="none" stroke="#888"
+          stroke-width="4" stroke-linecap="round" stroke-dasharray="80 200" />
+</svg>
+```
+
+A cor do círculo (`stroke`) acompanha o tema ativo (gray para dark/light).
+Aparece imediatamente quando `show_loading()` é chamado e some quando
+`show_markdown()` ou `show_error()` é invocado.
+
+### 4.3. Editor Central: Save, Undo/Redo, e "Edit with AI"
+
+O `CodeEditorPanel` deixou de ser read-only. Agora é totalmente editável,
+com uma toolbar no topo e 3 recursos:
+
+**Toolbar:**
+
+```text
++--------------------------------------------+
+| [Save]                [Edit with AI ▾]   |
++--------------------------------------------+
+|                                            |
+|  QPlainTextEdit (editável, monospace)      |
+|  ...                                       |
++--------------------------------------------+
+```
+
+**Save (Ctrl+S):**
+
+- Escreve o conteúdo do editor de volta ao arquivo no disco via
+  `FileManager.write_file(path, content)`
+- Sucesso: botão "Save" desabilita, status bar mostra "Saved at HH:MM:SS"
+- Erro: emite `save_failed(str)` que o `MainWindow` roteia para o
+  `visualizer.show_error`
+
+**Undo/Redo:**
+
+- Nativos do `QPlainTextEdit` (`Ctrl+Z`, `Ctrl+Y`)
+- Marcador `*` no título quando há mudanças não salvas
+- `document().modificationChanged` controla habilitação do botão Save
+
+**Edit with AI (com autorização):**
+
+1. Click → `QInputDialog.getText` pede instrução (ex: "Add type hints")
+2. Confirmação → dispara `AIEngine.edit_file(content, instruction)`
+3. Worker roda em background (spinner)
+4. Resultado aparece em dialog de preview:
+   - Mostra o novo conteúdo completo (sem diff colorido nesta versão)
+   - Botões **Apply** / **Cancel**
+5. Apply: `FileManager.write_file` + atualiza o editor
+6. Cancel: descarta
+
+A IA **nunca** edita o arquivo sem confirmação explícita do usuário.
+
+### 4.4. Toolbar do FileExplorer (Select/New/Refresh)
+
+O `FileExplorerPanel` ganha uma toolbar horizontal acima do tree com 3 ações:
+
+**Select Folder (Ctrl+O):**
+
+- Abre `QFileDialog.getExistingDirectory`
+- Troca a raiz do tree (`QFileSystemModel.setRootPath`)
+- Persiste em `QSettings` (key `root_dir`)
+- Próxima execução do app abre direto na pasta escolhida
+
+**+ New Folder (Ctrl+Shift+N):**
+
+- Click → input inline (`QLineEdit`) aparece abaixo da toolbar
+- Usuário digita o nome + Enter → `FileManager.create_folder(root, name)`
+- Esc ou click fora → fecha input sem criar
+- Sucesso: tree atualiza (`QFileSystemModel.refresh`)
+- Erro (nome duplicado, sem permissão): `QMessageBox.warning`
+
+**Refresh (F5):**
+
+- `QFileSystemModel.refresh()` — re-escaneia o disco
+- Útil quando arquivos mudam externamente (git pull, etc.)
+
+### 4.5. Persistência da Raiz do Tree
+
+A primeira ação do app ao abrir é ler a pasta raiz de `QSettings`:
+
+```python
+from PySide6.QtCore import QSettings
+settings = QSettings()  # usa QApplication.organizationName() + applicationName()
+saved_root = settings.value("root_dir", str(Path(os.getcwd())), type=str)
+```
+
+Default: `os.getcwd()` se nunca foi setado. Se a pasta não existir mais
+(foi deletada), o app faz fallback para `cwd` e atualiza a setting.
+
+### 4.6. Polish Visual (QSS)
+
+- **Pastas visíveis no tema light**: o `QTreeView::branch` antes era
+  `background-color: transparent` (invisível sobre fundo claro). Agora é
+  `#e8e8e8` em light theme — contraste ≥ 3:1 com o bg do tree.
+- **Padding interno**: `QTreeView` e `QPlainTextEdit` ganham
+  `padding: 4px` no QSS, melhorando a legibilidade.
+
+---
+
+## 5. Estado dos Sinais (resumo consolidado)
+
+| Origem | Signal | Payload | Conectado em |
+|---|---|---|---|
+| FileExplorerPanel | `file_selected` | `str` (path) | MainWindow → editor + visualizer |
+| CodeEditorPanel | `save_failed` | `str` (erro) | MainWindow → visualizer.show_error |
+| CodeEditorPanel | `ai_edit_requested` | `str, str` (path, instrução) | MainWindow → AIEditWorker |
+| VisualizerPanel | `chat_send_requested` | `str` (msg) | MainWindow → ChatWorker |
+| AIWorker | `finished` | `str` (markdown) | visualizer.show_markdown |
+| AIWorker | `failed` | `str` (erro) | visualizer.show_error |
+
+## 6. Atalhos de Teclado (consolidados)
+
+| Atalho | Ação | Onde |
+|---|---|---|
+| `Ctrl+S` | Save | CodeEditorPanel |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / Redo | CodeEditorPanel (nativo) |
+| `Ctrl+O` | Select Folder | FileExplorerPanel |
+| `Ctrl+Shift+N` | New Folder | FileExplorerPanel |
+| `F5` | Refresh | FileExplorerPanel |
+| `Ctrl+Shift+T` | Toggle theme | MainWindow (do Change 004) |
+| `Enter` (no chat) | Send message | VisualizerPanel |

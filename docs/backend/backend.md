@@ -39,6 +39,8 @@ create_folder(target_dir: str, name: str) -> bool: Cria novo diretório.
 
 create_file(target_dir: str, name: str, content: str = "") -> bool: Cria novo arquivo.
 
+write_file(path: str, content: str) -> None **(Change 005)**: sobrescreve o conteúdo de um arquivo existente (UTF-8, sem BOM). Usado pelo botão **Salvar** do editor e pelo fluxo **Editar com IA → Aplicar**. Recusa criar o arquivo se o diretório pai não existir; recusa sobrescrever um diretório.
+
 copy_item(source_path: str, destination_dir: str) -> str: Copia arquivo/pasta.
 
 move_item(source_path: str, destination_dir: str) -> str: Recorta/move arquivo ou pasta.
@@ -68,6 +70,8 @@ analyze_architecture(code_content: str, file_type: str) -> str: Examina o arquiv
 
 extract_uml_structure(code_content: str) -> str: Processa o código Backend e retorna estritamente a sintaxe Mermaid.js correspondente.
 
+edit_file(content: str, instruction: str, file_type: str) -> str **(Change 005)**: Aplica uma instrução em linguagem natural ao conteúdo de um arquivo e devolve o arquivo inteiro modificado. Temperatura baixa (0.1) para edições determinísticas. Usado pelo fluxo **Editar com IA** do editor central — a MainWindow exibe um preview com diff antes de aplicar via `FileManager.write_file`.
+
 2.3. Diagram Generator (services/diagram_generator.py)
 Converte as saídas de análise e o código do usuário em especificações de diagramas de arquitetura e UML.
 
@@ -91,6 +95,14 @@ Usuário solicita geração ou análise.
 A UI exibe indicador de carregamento e dispara um AIWorker em background.
 
 Ao finalizar, o sinal finished(result) envia a resposta para atualizar o editor e o renderizador na thread principal da UI.
+
+Workers ativos (Change 005):
+
+- **AnalysisWorker**: `analyze_architecture` ao clicar num arquivo do explorador.
+- **AIEditWorker**: `edit_file` ao clicar em **Editar com IA**; a MainWindow recebe o resultado e exibe um `AIEditPreviewDialog` com diff unificado. Em **Aplicar**, grava via `FileManager.write_file`; em **Cancelar**, descarta.
+- **ChatWorker**: prompt livre montado pelo `VisualizerPanel` (com contexto do arquivo + 5 últimos turnos). Usado pelo campo de chat da aba direita.
+
+Os três workers usam o mesmo padrão (`_WorkerSignals(QObject)` companheiro + `QRunnable`) e fecham exceções para manter o event loop saudável.
 
 4. Estrutura de Tratamento de Erros
 FileOperationError: Lançada quando ocorrem falhas de permissão de disco ou arquivo inexistente.

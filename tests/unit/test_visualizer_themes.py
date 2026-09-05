@@ -59,6 +59,14 @@ def test_show_loading_default_theme_is_dark(qapp) -> None:
     assert panel.last_markdown is None
 
 
+def test_loading_html_template_has_spinner(qapp) -> None:
+    """The loading page must include the SVG spinner + CSS @keyframes (Bloco C)."""
+    tpl = VisualizerPanel._LOADING_HTML_TEMPLATE
+    assert "@keyframes" in tpl
+    assert "<svg" in tpl
+    assert "spinner" in tpl.lower()
+
+
 # ----- show_error -----------------------------------------------------------
 
 

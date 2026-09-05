@@ -76,6 +76,35 @@ class FileManager:
                 path=path,
             ) from exc
 
+    # ----- Write ------------------------------------------------------------
+
+    def write_file(self, path: str, content: str) -> None:
+        """Overwrite ``path`` with ``content`` (UTF-8, no BOM).
+
+        Used by the editor's "Save" action (Change 005) and by the
+        AI-edit "apply" flow. Refuses to write if the parent directory
+        does not exist or the path is a directory — the editor only
+        edits known-existing files, so those are bugs in the caller.
+        """
+        target = Path(path)
+        if not target.parent.exists():
+            raise FileOperationError(
+                f"Parent directory does not exist: {target.parent}",
+                path=str(target),
+            )
+        if target.exists() and target.is_dir():
+            raise FileOperationError(
+                f"Cannot write a directory: {path}",
+                path=str(target),
+            )
+        try:
+            target.write_text(content, encoding="utf-8")
+        except OSError as exc:
+            raise FileOperationError(
+                f"Cannot write file {path}",
+                path=str(target),
+            ) from exc
+
     # ----- Creation ----------------------------------------------------------
 
     def create_folder(self, target_dir: str, name: str) -> str:

@@ -164,3 +164,43 @@ def test_detect_system_theme_handles_missing_registry() -> None:
         mock_winreg.OpenKey.side_effect = OSError("registry not available")
         result = ThemeManager.detect_system_theme()
     assert result == Theme.DARK
+
+
+# ----- QSS content (Change 005) -------------------------------------------
+
+
+def test_light_qss_has_visible_branch_background(qapp) -> None:
+    """Regression: in light theme, QTreeView::branch used to be transparent
+    and the expand/collapse arrows were nearly invisible against the white
+    rows. The QSS now sets an explicit grey fill on the branch."""
+    from pathlib import Path
+    from app.ui import theme as theme_mod
+
+    qss_path = Path(theme_mod.__file__).parent / "qss" / "light.qss"
+    content = qss_path.read_text(encoding="utf-8")
+    # The fix sets the branch background to a light grey (not transparent).
+    assert "QTreeView::branch" in content
+    branch_block = content.split("QTreeView::branch", 1)[1].split("}", 1)[0]
+    assert "transparent" not in branch_block
+    # And it specifies a concrete color (the regression value was #e8e8e8).
+    assert "#e8e8e8" in branch_block or "#f0f0f0" in branch_block
+
+
+def test_dark_qss_pads_tree_and_editor(qapp) -> None:
+    """The dark theme now declares 4px padding on the tree and editor."""
+    from pathlib import Path
+    from app.ui import theme as theme_mod
+
+    qss_path = Path(theme_mod.__file__).parent / "qss" / "dark.qss"
+    content = qss_path.read_text(encoding="utf-8")
+    assert "padding: 4px" in content
+
+
+def test_light_qss_pads_tree_and_editor(qapp) -> None:
+    """The light theme also has 4px padding for the tree and editor."""
+    from pathlib import Path
+    from app.ui import theme as theme_mod
+
+    qss_path = Path(theme_mod.__file__).parent / "qss" / "light.qss"
+    content = qss_path.read_text(encoding="utf-8")
+    assert "padding: 4px" in content

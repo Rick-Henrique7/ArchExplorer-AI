@@ -17,6 +17,12 @@ QTreeView {
     selection-color: #1e1e1e;
     border: 1px solid #e0e0e0;
     outline: 0;
+    padding: 4px;
+}
+
+QTreeView::item {
+    padding: 2px 0;
+    border: none;
 }
 
 QTreeView::item:hover {
@@ -28,8 +34,16 @@ QTreeView::item:selected {
     color: #1e1e1e;
 }
 
+/* The branch (expand/collapse arrow area) needs a light-grey fill
+   instead of transparent — otherwise the dark expand arrows overlap
+   the white row background and look like floating glyphs. */
 QTreeView::branch {
-    background-color: transparent;
+    background-color: #e8e8e8;
+}
+
+QTreeView::branch:has-children:!has-siblings,
+QTreeView::branch:has-siblings:adjoins-item {
+    background-color: #e8e8e8;
 }
 
 /* --- Code editor (middle column) ------------------------------- */
@@ -39,6 +53,7 @@ QPlainTextEdit {
     selection-background-color: #cce8ff;
     selection-color: #1e1e1e;
     border: 1px solid #e0e0e0;
+    padding: 4px;
 }
 
 /* --- Splitter --------------------------------------------------- */

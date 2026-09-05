@@ -245,3 +245,52 @@ def test_clipboard_paste_failure_preserves_buffer(tmp_path: Path) -> None:
 def test_create_in_missing_directory_raises(tmp_path: Path) -> None:
     with pytest.raises(FileOperationError):
         FileManager().create_folder(str(tmp_path / "missing"), "x")
+
+
+# ----- write_file (Change 005) -----
+
+
+def test_write_file_overwrites_existing(tmp_path: Path) -> None:
+    """Editor 'Save' flow: existing file gets the new content."""
+    target = tmp_path / "x.py"
+    target.write_text("old", encoding="utf-8")
+    FileManager().write_file(str(target), "new content")
+    assert target.read_text(encoding="utf-8") == "new content"
+
+
+def test_write_file_creates_when_missing(tmp_path: Path) -> None:
+    """A new file can be created by write_file if the parent exists."""
+    target = tmp_path / "new.py"
+    FileManager().write_file(str(target), "hello")
+    assert target.read_text(encoding="utf-8") == "hello"
+
+
+def test_write_file_preserves_unicode(tmp_path: Path) -> None:
+    """Unicode content is round-tripped via UTF-8."""
+    target = tmp_path / "i18n.txt"
+    payload = "olá — 你好 — 🚀"
+    FileManager().write_file(str(target), payload)
+    assert target.read_text(encoding="utf-8") == payload
+
+
+def test_write_file_empty_string_clears(tmp_path: Path) -> None:
+    """An empty payload empties the file (not delete it)."""
+    target = tmp_path / "x.txt"
+    target.write_text("content", encoding="utf-8")
+    FileManager().write_file(str(target), "")
+    assert target.read_text(encoding="utf-8") == ""
+
+
+def test_write_file_to_missing_parent_raises(tmp_path: Path) -> None:
+    """Refuses to silently create parent directories — editor saves in-place only."""
+    with pytest.raises(FileOperationError):
+        FileManager().write_file(str(tmp_path / "no" / "such" / "x.py"), "x")
+
+
+def test_write_file_on_directory_raises(tmp_path: Path) -> None:
+    """Refuses to 'write' a directory — that is a programmer error."""
+    d = tmp_path / "sub"
+    d.mkdir()
+    with pytest.raises(FileOperationError):
+        FileManager().write_file(str(d), "nope")
+
