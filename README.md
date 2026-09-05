@@ -9,13 +9,8 @@
 </p>
 
 <p align="center">
-
-
   <a href="./LICENSE">
     <img src="https://img.shields.io/github/license/Rick-Henrique7/ArchExplorer-AI?style=for-the-badge" alt="License">
-  </a>
-  <a href="https://github.com/Rick-Henrique7/ArchExplorer-AI/releases">
-    <img src="https://img.shields.io/github/v/release/Rick-Henrique7/ArchExplorer-AI?style=for-the-badge&include_prereleases" alt="Release">
   </a>
   <a href="#testes">
     <img src="https://img.shields.io/badge/tests-334%20passed-brightgreen?style=for-the-badge" alt="Tests">
