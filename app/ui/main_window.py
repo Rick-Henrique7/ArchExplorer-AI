@@ -1,4 +1,4 @@
-"""Main window — three horizontal panels (File Explorer / Editor / Visualizer)."""
+"""Main window — three horizontal panels + menu bar with theme switcher."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, QThreadPool, Slot
+from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import (
     QMainWindow,
     QSplitter,
@@ -18,22 +19,20 @@ from app.ui.analysis_worker import AnalysisWorker
 from app.ui.code_editor import CodeEditorPanel
 from app.ui.file_explorer import FileExplorerPanel
 from app.ui.file_inspector import inspect_file
+from app.ui.theme import Theme, ThemeManager
 from app.ui.visualizer import VisualizerPanel
 
 
 class MainWindow(QMainWindow):
     """ArchExplorer AI main window.
 
-    Hosts three resizable panels in a horizontal ``QSplitter``:
+    Hosts three resizable panels in a horizontal ``QSplitter`` plus a
+    menu bar with the View > Theme switcher.
 
-    - :class:`FileExplorerPanel` — real file tree (``QTreeView``)
-    - :class:`CodeEditorPanel` — read-only file viewer
-    - :class:`VisualizerPanel` — ``QWebEngineView`` rendering LLM responses
-
-    The MainWindow accepts an optional ``services`` dict for dependency
-    injection (per ``docs/guidelines/diretriz.md`` — DIP). Required key:
-    ``"ai_engine"``. Missing services produce a clear error in the
-    visualizer instead of a crash.
+    Dependency injection:
+    - ``services`` (dict): expected key ``"ai_engine"``. Optional fallback.
+    - ``theme_manager``: optional; if provided, the View menu is built
+      and the current theme is applied to incoming markdown renders.
     """
 
     WINDOW_TITLE: str = "ArchExplorer AI"
@@ -43,12 +42,16 @@ class MainWindow(QMainWindow):
     def __init__(
         self,
         services: dict[str, Any] | None = None,
+        theme_manager: ThemeManager | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._services: dict[str, Any] = services if services is not None else {}
+        self._theme_manager = theme_manager
         self._build_ui()
         self._wire()
+        if self._theme_manager is not None:
+            self._build_menu()
 
     def _build_ui(self) -> None:
         self.setWindowTitle(self.WINDOW_TITLE)
@@ -75,6 +78,59 @@ class MainWindow(QMainWindow):
 
     def _wire(self) -> None:
         self._file_explorer.file_selected.connect(self._on_file_selected)
+
+    def _build_menu(self) -> None:
+        """Build the menu bar with the View > Theme switcher."""
+        menubar = self.menuBar()
+        view_menu = menubar.addMenu("&View")
+        theme_menu = view_menu.addMenu("&Theme")
+
+        # Exclusive group so only one theme is selected at a time.
+        self._theme_action_group = QActionGroup(self)
+        self._theme_action_group.setExclusive(True)
+
+        self._theme_actions: dict[Theme, QAction] = {}
+        for theme in (Theme.DARK, Theme.LIGHT, Theme.SYSTEM):
+            action = QAction(theme.value.title(), self)
+            action.setCheckable(True)
+            action.setChecked(theme == self._theme_manager.current())
+            # Use a default-arg to capture the value at lambda-creation time.
+            action.triggered.connect(
+                lambda _checked=False, t=theme: self._on_theme_changed(t)
+            )
+            self._theme_action_group.addAction(action)
+            self._theme_actions[theme] = action
+            theme_menu.addAction(action)
+
+        view_menu.addSeparator()
+        toggle_action = QAction("&Toggle Theme", self)
+        toggle_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
+        toggle_action.triggered.connect(self._on_toggle_theme)
+        view_menu.addAction(toggle_action)
+
+    @Slot(Theme)
+    def _on_theme_changed(self, theme: Theme) -> None:
+        self._theme_manager.apply(theme)
+        # Re-render the current markdown in the new theme (if any).
+        if self._visualizer.last_markdown is not None:
+            self._visualizer.show_markdown(
+                self._visualizer.last_markdown,
+                theme=self._theme_manager.effective().value,
+            )
+        # Update menu check state.
+        for t, action in self._theme_actions.items():
+            action.setChecked(t == self._theme_manager.current())
+
+    @Slot()
+    def _on_toggle_theme(self) -> None:
+        self._theme_manager.cycle()
+        for t, action in self._theme_actions.items():
+            action.setChecked(t == self._theme_manager.current())
+        if self._visualizer.last_markdown is not None:
+            self._visualizer.show_markdown(
+                self._visualizer.last_markdown,
+                theme=self._theme_manager.effective().value,
+            )
 
     @Slot(str)
     def _on_file_selected(self, path: str) -> None:
@@ -111,9 +167,18 @@ class MainWindow(QMainWindow):
             file_type=result.file_type,
             file_label=Path(path).name,
         )
-        worker.signals.finished.connect(self._visualizer.show_markdown)
+        worker.signals.finished.connect(self._on_analysis_finished)
         worker.signals.failed.connect(self._visualizer.show_error)
         QThreadPool.globalInstance().start(worker)
+
+    @Slot(str)
+    def _on_analysis_finished(self, result: str) -> None:
+        theme = (
+            self._theme_manager.effective().value
+            if self._theme_manager is not None
+            else "dark"
+        )
+        self._visualizer.show_markdown(result, theme=theme)
 
     # ----- Public API used by tests and future controllers ------------------
 
@@ -130,3 +195,7 @@ class MainWindow(QMainWindow):
     def services(self) -> dict[str, Any]:
         """Return a copy of the injected services map."""
         return dict(self._services)
+
+    def theme_manager(self) -> ThemeManager | None:
+        """Return the injected ThemeManager (or None if not provided)."""
+        return self._theme_manager

@@ -1,0 +1,122 @@
+/* ============================================================
+   ArchExplorer AI — light theme
+   Activated by ThemeManager when effective theme is "light".
+   ============================================================ */
+
+QMainWindow,
+QWidget {
+    background-color: #fafafa;
+    color: #1e1e1e;
+}
+
+/* --- Tree view (left column) ----------------------------------- */
+QTreeView {
+    background-color: #ffffff;
+    alternate-background-color: #f5f5f5;
+    selection-background-color: #cce8ff;
+    selection-color: #1e1e1e;
+    border: 1px solid #e0e0e0;
+    outline: 0;
+}
+
+QTreeView::item:hover {
+    background-color: #e8f0fe;
+}
+
+QTreeView::item:selected {
+    background-color: #cce8ff;
+    color: #1e1e1e;
+}
+
+QTreeView::branch {
+    background-color: transparent;
+}
+
+/* --- Code editor (middle column) ------------------------------- */
+QPlainTextEdit {
+    background-color: #ffffff;
+    color: #1e1e1e;
+    selection-background-color: #cce8ff;
+    selection-color: #1e1e1e;
+    border: 1px solid #e0e0e0;
+}
+
+/* --- Splitter --------------------------------------------------- */
+QSplitter::handle {
+    background-color: #d0d0d0;
+}
+
+QSplitter::handle:hover {
+    background-color: #007acc;
+}
+
+QSplitter::handle:vertical {
+    height: 1px;
+}
+
+QSplitter::handle:horizontal {
+    width: 1px;
+}
+
+/* --- Menu bar --------------------------------------------------- */
+QMenuBar {
+    background-color: #f0f0f0;
+    color: #1e1e1e;
+    border-bottom: 1px solid #d0d0d0;
+    padding: 2px;
+}
+
+QMenuBar::item {
+    background-color: transparent;
+    padding: 4px 10px;
+    border-radius: 3px;
+}
+
+QMenuBar::item:selected {
+    background-color: #d0d0d0;
+}
+
+QMenuBar::item:pressed {
+    background-color: #cce8ff;
+}
+
+QMenu {
+    background-color: #ffffff;
+    color: #1e1e1e;
+    border: 1px solid #d0d0d0;
+    padding: 4px;
+}
+
+QMenu::item {
+    padding: 6px 24px 6px 16px;
+    border-radius: 3px;
+}
+
+QMenu::item:selected {
+    background-color: #cce8ff;
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: #d0d0d0;
+    margin: 4px 8px;
+}
+
+/* --- Status bar ------------------------------------------------- */
+QStatusBar {
+    background-color: #007acc;
+    color: #ffffff;
+    border-top: 1px solid #d0d0d0;
+}
+
+QStatusBar::item {
+    border: none;
+}
+
+/* --- Tool tips -------------------------------------------------- */
+QToolTip {
+    background-color: #ffffff;
+    color: #1e1e1e;
+    border: 1px solid #d0d0d0;
+    padding: 4px;
+}

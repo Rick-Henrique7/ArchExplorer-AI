@@ -28,10 +28,19 @@ MARKED_CDN: str = (
 )
 
 GITHUB_MARKDOWN_CSS_VERSION: str = "5.5.1"
-GITHUB_MARKDOWN_CSS: str = (
+# Two variants of the github-markdown-css package — one for each theme.
+# The choice is driven by the `theme` argument of build_html_template.
+GITHUB_MARKDOWN_DARK_CSS: str = (
     f"https://cdn.jsdelivr.net/npm/github-markdown-css"
     f"@{GITHUB_MARKDOWN_CSS_VERSION}/github-markdown-dark.min.css"
 )
+GITHUB_MARKDOWN_LIGHT_CSS: str = (
+    f"https://cdn.jsdelivr.net/npm/github-markdown-css"
+    f"@{GITHUB_MARKDOWN_CSS_VERSION}/github-markdown-light.min.css"
+)
+
+# Backwards-compat alias (kept so existing imports of this name still work).
+GITHUB_MARKDOWN_CSS: str = GITHUB_MARKDOWN_DARK_CSS
 
 MERMAID_CDN: str = "https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"
 
@@ -81,7 +90,7 @@ _HTML_TEMPLATE: str = """<!DOCTYPE html>
 """
 
 
-def build_html_template(markdown_text: str) -> str:
+def build_html_template(markdown_text: str, theme: str = "dark") -> str:
     """Build a self-contained HTML page that renders markdown with Mermaid support.
 
     Parameters
@@ -89,15 +98,19 @@ def build_html_template(markdown_text: str) -> str:
     markdown_text:
         Raw markdown response from the LLM. Will be HTML-escaped before
         embedding in the page to prevent XSS via markdown payloads.
+    theme:
+        ``"dark"`` or ``"light"`` — selects the matching github-markdown-css
+        variant so the rendered page is readable in both app themes.
 
     Returns
     -------
     A complete HTML document as a string, ready to be passed to
     ``QWebEngineView.setHtml()``.
     """
+    css_url = GITHUB_MARKDOWN_LIGHT_CSS if theme == "light" else GITHUB_MARKDOWN_DARK_CSS
     escaped = escape(markdown_text)
     return _HTML_TEMPLATE.format(
-        github_markdown_css=GITHUB_MARKDOWN_CSS,
+        github_markdown_css=css_url,
         marked_cdn=MARKED_CDN,
         mermaid_cdn=MERMAID_CDN,
         raw_md=escaped,

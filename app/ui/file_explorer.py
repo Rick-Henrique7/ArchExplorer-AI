@@ -8,9 +8,15 @@ from pathlib import Path
 from PySide6.QtCore import QModelIndex, Qt, Signal
 from PySide6.QtWidgets import QFileSystemModel, QTreeView, QVBoxLayout, QWidget
 
+from app.ui.icons import CustomIconProvider
+
 
 class FileExplorerPanel(QWidget):
     """File tree rooted at ``root`` (default: current working directory).
+
+    Uses a :class:`CustomIconProvider` so each entry shows a Material
+    Design Icon appropriate to its file type, instead of the generic
+    Windows file icons the default ``QFileIconProvider`` would yield.
 
     Emits :attr:`file_selected` (carrying the absolute path) when the user
     clicks a file (directories are navigated natively by the tree and do
@@ -34,6 +40,10 @@ class FileExplorerPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self._model = QFileSystemModel(self)
+        # CustomIconProvider replaces the default QFileIconProvider so the
+        # tree shows MDI icons (.py, .md, .json, LICENSE, etc.) instead of
+        # the OS-default yellow folder / blank page icons.
+        self._model.setIconProvider(CustomIconProvider())
         self._model.setRootPath(str(root))
 
         self._view = QTreeView(self)

@@ -79,11 +79,20 @@ class VisualizerPanel(QWidget):
         self.last_error = None
         self._web.setHtml(self._LOADING_HTML_TEMPLATE.format(label=html_escape(label)))
 
-    def show_markdown(self, text: str) -> None:
-        """Render the LLM response as HTML with Mermaid support."""
+    def show_markdown(self, text: str, theme: str = "dark") -> None:
+        """Render the LLM response as HTML with Mermaid support.
+
+        Parameters
+        ----------
+        text:
+            Markdown response from the LLM.
+        theme:
+            ``"dark"`` or ``"light"`` — picks the matching github-markdown-css
+            variant so the page is readable in the current app theme.
+        """
         self.last_markdown = text
         self.last_error = None
-        self._web.setHtml(build_html_template(text))
+        self._web.setHtml(build_html_template(text, theme=theme))
 
     def show_error(self, message: str) -> None:
         """Display an error message (no AI call)."""
