@@ -16,12 +16,39 @@
 
 Requires **Python 3.10+** (3.13 tested) on Windows.
 
+> **Important on Windows:** the `py` launcher is registered globally and
+> ignores the active virtual environment. After activating the venv, use
+> **`python`** (not `py`) to run the app. The `run.ps1` script wraps
+> the activation so you don't have to remember.
+
+### One-shot (recommended)
+
 ```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements-dev.txt
-py -m app.main
+.\run.ps1
 ```
+
+The script activates `.venv` (creating it if missing), installs dev
+dependencies, and launches the app.
+
+### Step-by-step
+
+```powershell
+# 1. Create the venv (one-time)
+py -m venv .venv
+
+# 2. Activate it
+.\.venv\Scripts\Activate.ps1
+
+# 3. Install dependencies (one-time per change)
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.txt
+
+# 4. Run the app
+python -m app.main
+```
+
+After activation, your prompt is prefixed with `(.venv)` and `python`
+resolves to `.venv\Scripts\python.exe` (where PySide6 lives).
 
 A window titled `ArchExplorer AI` should open with three side-by-side
 panels: **File Explorer** / **Editor** / **Visualizer**.
