@@ -149,3 +149,42 @@ def test_provider_set_color_invalidates_cache(qapp, tmp_path: Path) -> None:
     # After color change + cache invalidation, the icons are different
     # QIcon instances (different cache keys).
     assert icon1.cacheKey() != icon2.cacheKey()
+
+
+# ----- Theme-aware colors --------------------------------------------------
+
+
+def test_set_theme_dark_uses_light_foreground(qapp) -> None:
+    """Dark theme: icons get a light foreground so they show on dark bg."""
+    provider = CustomIconProvider()
+    provider.set_theme("dark")
+    assert provider._color == "#c9d1d9"
+
+
+def test_set_theme_light_uses_dark_foreground(qapp) -> None:
+    """Light theme: icons get a dark foreground so they show on white bg.
+
+    Regression for the user's complaint: in light mode, folder/file
+    icons were white-on-white and effectively invisible.
+    """
+    provider = CustomIconProvider()
+    provider.set_theme("light")
+    assert provider._color == "#24292f"
+
+
+def test_set_theme_unknown_falls_back_to_dark(qapp) -> None:
+    provider = CustomIconProvider()
+    provider.set_theme("midnight")
+    assert provider._color == "#c9d1d9"  # dark fallback
+
+
+def test_set_theme_produces_new_qicon(qapp, tmp_path) -> None:
+    """Theme switch must produce new QIcon instances (different colors)."""
+    f = tmp_path / "a.py"
+    f.write_text("x", encoding="utf-8")
+    provider = CustomIconProvider()
+    icon_dark = provider.icon(QFileInfo(str(f)))
+    provider.set_theme("light")
+    icon_light = provider.icon(QFileInfo(str(f)))
+    # Different theme -> different QIcon cache key.
+    assert icon_dark.cacheKey() != icon_light.cacheKey()

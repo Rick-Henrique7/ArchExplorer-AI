@@ -56,7 +56,25 @@ class FileExplorerPanel(QWidget):
     ) -> None:
         super().__init__(parent)
         self._file_manager = file_manager or FileManager()
+        # The icon provider is held as an attribute so MainWindow can
+        # update its color (and invalidate the cached QIcons) when the
+        # theme changes.
+        self._icon_provider = CustomIconProvider()
         self._build_ui(root or Path(os.getcwd()))
+
+    def icon_provider(self) -> CustomIconProvider:
+        """Return the icon provider (for theme-driven color updates)."""
+        return self._icon_provider
+
+    def apply_theme(self, theme: str) -> None:
+        """Recolor icons to match ``theme`` and re-render the model.
+
+        ``QFileSystemModel`` caches icons internally per file path, so
+        just changing the provider's color is not enough — we also need
+        to re-attach the provider to the model to force a re-fetch.
+        """
+        self._icon_provider.set_theme(theme)
+        self._model.setIconProvider(self._icon_provider)
 
     def _build_ui(self, root: Path) -> None:
         layout = QVBoxLayout(self)
@@ -69,17 +87,17 @@ class FileExplorerPanel(QWidget):
         tb_layout.setContentsMargins(4, 4, 4, 4)
         tb_layout.setSpacing(4)
 
-        self._select_button = QPushButton("Select Folder", self)
+        self._select_button = QPushButton("Selecionar Pasta", self)
         self._select_button.setToolTip("Escolher uma pasta de qualquer local do PC")
         self._select_button.clicked.connect(self._on_select_folder)
         tb_layout.addWidget(self._select_button)
 
-        self._new_folder_button = QPushButton("+Folder", self)
+        self._new_folder_button = QPushButton("+Pasta", self)
         self._new_folder_button.setToolTip("Criar uma nova subpasta no diretório raiz")
         self._new_folder_button.clicked.connect(self._on_new_folder)
         tb_layout.addWidget(self._new_folder_button)
 
-        self._refresh_button = QPushButton("Refresh", self)
+        self._refresh_button = QPushButton("Atualizar", self)
         self._refresh_button.setToolTip("Recarregar a árvore (F5)")
         self._refresh_button.setShortcut("F5")
         self._refresh_button.clicked.connect(self._on_refresh)
@@ -107,7 +125,7 @@ class FileExplorerPanel(QWidget):
         # CustomIconProvider replaces the default QFileIconProvider so the
         # tree shows MDI icons (.py, .md, .json, LICENSE, etc.) instead of
         # the OS-default yellow folder / blank page icons.
-        self._model.setIconProvider(CustomIconProvider())
+        self._model.setIconProvider(self._icon_provider)
         self._model.setRootPath(str(root))
 
         self._view = QTreeView(self)

@@ -15,7 +15,7 @@ _ASSISTANT_REPLY = "Here is a thoughtful answer to your question."
 
 @pytest.fixture
 def chat_engine() -> AIEngine:
-    return AIEngine(MockAIProvider({"User:": _ASSISTANT_REPLY}))
+    return AIEngine(MockAIProvider({"Usuário:": _ASSISTANT_REPLY}))
 
 
 def _drain_threadpool() -> None:

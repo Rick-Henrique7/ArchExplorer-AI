@@ -40,6 +40,7 @@ class CodeEditorPanel(QWidget):
     """
 
     save_failed = Signal(str)        # error message
+    file_saved = Signal(str)         # absolute path of the saved file
     ai_edit_requested = Signal(str, str)  # (absolute_path, instruction)
 
     def __init__(
@@ -163,6 +164,9 @@ class CodeEditorPanel(QWidget):
             self.save_failed.emit(exc.message)
             return
         self._editor.document().setModified(False)
+        # Notify the MainWindow so it can invalidate the analysis cache
+        # (file content just changed on disk).
+        self.file_saved.emit(self._current_path)
         self._update_buttons()
 
     def _on_ai_edit_clicked(self) -> None:

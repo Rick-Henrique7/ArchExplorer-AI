@@ -16,7 +16,7 @@ from app.ui.analysis_worker import AIEditWorker, AnalysisWorker, ChatWorker
 
 
 def test_worker_emits_finished_with_provider_response() -> None:
-    provider = MockAIProvider({"Patterns": "## Patterns\n- Singleton"})
+    provider = MockAIProvider({"Padrões": "## Padrões\n- Singleton"})
     engine = AIEngine(provider)
     worker = AnalysisWorker(
         ai_engine=engine,
@@ -128,7 +128,7 @@ def test_worker_accepts_optional_file_label() -> None:
 
 
 def test_ai_edit_worker_emits_new_content() -> None:
-    provider = MockAIProvider({"User instruction:": "def foo():\n    pass\n"})
+    provider = MockAIProvider({"Instrução do usuário:": "def foo():\n    pass\n"})
     engine = AIEngine(provider)
     worker = AIEditWorker(
         ai_engine=engine,
@@ -188,18 +188,18 @@ def test_ai_edit_worker_emits_failed_on_unexpected_error() -> None:
 
 
 def test_chat_worker_emits_response() -> None:
-    provider = MockAIProvider({"User:": "Hi there!"})
+    provider = MockAIProvider({"Usuário:": "Olá! Como posso ajudar?"})
     engine = AIEngine(provider)
     worker = ChatWorker(
         ai_engine=engine,
-        prompt="User: hello\nAssistant:",
-        user_msg="hello",
+        prompt="Usuário: olá\nAssistente:",
+        user_msg="olá",
     )
     captured: list[str] = []
     worker.signals.finished.connect(captured.append)
     worker.run()
     assert len(captured) == 1
-    assert captured[0] == "Hi there!"
+    assert captured[0] == "Olá! Como posso ajudar?"
 
 
 def test_chat_worker_emits_failed_on_ai_error() -> None:
@@ -210,8 +210,8 @@ def test_chat_worker_emits_failed_on_ai_error() -> None:
     engine = AIEngine(FailingProvider())
     worker = ChatWorker(
         ai_engine=engine,
-        prompt="User: hi\nAssistant:",
-        user_msg="hi",
+        prompt="Usuário: oi\nAssistente:",
+        user_msg="oi",
     )
     captured: list[str] = []
     worker.signals.failed.connect(captured.append)

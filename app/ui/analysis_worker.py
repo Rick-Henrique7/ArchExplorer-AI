@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
-from app.services import AIEngine, AIServiceUnavailableError
+from app.services import AIEngine, AIServiceUnavailableError, SYSTEM_PROMPT
 
 
 class _WorkerSignals(QObject):
@@ -136,8 +136,10 @@ class ChatWorker(QRunnable):
             # The engine exposes `provider` for advanced flows like
             # this. We re-use the same engine so the user can swap the
             # provider (mock vs Ollama) without touching the worker.
+            # SYSTEM_PROMPT forces Portuguese responses and reminds the
+            # model that file content embedded in the prompt is real.
             response = self._engine.provider.generate(
-                self._prompt, temperature=0.3
+                self._prompt, system=SYSTEM_PROMPT, temperature=0.3
             )
         except AIServiceUnavailableError as exc:
             self.signals.failed.emit(f"AI service unavailable: {exc.message}")

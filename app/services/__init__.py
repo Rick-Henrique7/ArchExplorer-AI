@@ -7,6 +7,11 @@ dependency injection at the ``MainWindow`` boundary.
 """
 
 from app.services.ai_engine import (
+    ANALYZE_ARCHITECTURE_PROMPT,
+    EDIT_FILE_PROMPT,
+    EXTRACT_UML_STRUCTURE_PROMPT,
+    GENERATE_COMPONENT_PROMPT,
+    SYSTEM_PROMPT,
     AIEngine,
     IAIProvider,
     MockAIProvider,
@@ -32,16 +37,21 @@ from app.services.file_manager import (
 __all__ = [
     "AIEngine",
     "AIServiceUnavailableError",
+    "ANALYZE_ARCHITECTURE_PROMPT",
     "ArchExplorerError",
     "BaseDiagramRenderer",
     "ClipboardMode",
     "ClipboardState",
     "DiagramParsingError",
+    "EDIT_FILE_PROMPT",
+    "EXTRACT_UML_STRUCTURE_PROMPT",
     "FileItem",
     "FileManager",
     "FileOperationError",
+    "GENERATE_COMPONENT_PROMPT",
     "IAIProvider",
     "MermaidRenderer",
     "MockAIProvider",
     "OllamaProvider",
+    "SYSTEM_PROMPT",
 ]

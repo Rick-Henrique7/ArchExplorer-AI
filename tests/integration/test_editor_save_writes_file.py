@@ -67,5 +67,5 @@ def test_editor_save_failure_surfaces_in_visualizer(qapp, tmp_path) -> None:
     window._code_editor._on_save_clicked()
 
     assert window._visualizer.last_error is not None
-    assert "Save failed" in window._visualizer.last_error
+    assert "Falha ao salvar" in window._visualizer.last_error
     assert "disk full" in window._visualizer.last_error

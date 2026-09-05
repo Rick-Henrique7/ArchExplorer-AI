@@ -15,7 +15,7 @@ _EDITED = 'def foo():\n    """New docstring."""\n    pass\n'
 
 @pytest.fixture
 def edit_engine() -> AIEngine:
-    return AIEngine(MockAIProvider({"User instruction:": _EDITED}))
+    return AIEngine(MockAIProvider({"Instrução do usuário:": _EDITED}))
 
 
 def _drain_threadpool() -> None:

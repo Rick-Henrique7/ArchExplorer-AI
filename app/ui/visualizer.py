@@ -111,14 +111,16 @@ class VisualizerPanel(QWidget):
     """
 
     chat_requested = Signal(str)  # user message text
+    analyze_requested = Signal()  # user clicked the manual Analisar button
 
     _IDLE_HTML: str = (
-        '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+        '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">'
         '<title>ArchExplorer</title></head>'
         "<body style=\"font-family: -apple-system, sans-serif; padding: 24px; "
         "{body_style}\">"
         "<h1>ArchExplorer</h1>"
-        "<p>Click a file in the explorer to analyze its architecture.</p>"
+        "<p>Selecione um arquivo no explorador à esquerda e clique em <b>Analisar</b> "
+        "para receber a análise de arquitetura.</p>"
         "<p>Ou converse com a IA no campo abaixo.</p>"
         "</body></html>"
     )
@@ -126,7 +128,7 @@ class VisualizerPanel(QWidget):
     # Inline SVG spinner + CSS animation. The @keyframes rotates the
     # circle so the user sees movement while the LLM is loading.
     _LOADING_HTML_TEMPLATE: str = (
-        '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+        '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">'
         '<title>ArchExplorer</title>'
         "<style>"
         "@keyframes spin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}"
@@ -142,18 +144,18 @@ class VisualizerPanel(QWidget):
         '<svg class="spinner" viewBox="0 0 50 50" width="40" height="40">'
         '<circle class="path" cx="25" cy="25" r="20" fill="none" '
         'stroke-width="4"></circle></svg>'
-        '<h1 style="margin: 0;">Analyzing {label}...</h1>'
+        '<h1 style="margin: 0;">Analisando {label}...</h1>'
         "</div>"
-        '<p class="muted">Qwen 2.5 Coder 3B is generating the analysis.</p>'
+        '<p class="muted">Qwen 2.5 Coder 3B está gerando a análise.</p>'
         "</body></html>"
     )
 
     _ERROR_HTML_TEMPLATE: str = (
-        '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+        '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">'
         '<title>ArchExplorer</title></head>'
         "<body style=\"font-family: -apple-system, sans-serif; padding: 24px; "
         "{body_style}\">"
-        '<h1 style="color: {error_accent};">Error</h1>'
+        '<h1 style="color: {error_accent};">Erro</h1>'
         '<pre style="background: {error_bg}; padding: 12px; '
         "border-radius: 4px; white-space: pre-wrap;\">"
         "{message}</pre></body></html>"
@@ -187,7 +189,25 @@ class VisualizerPanel(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # Top: web view (markdown render).
+        # --- Top header: file label + manual Analisar button -----------
+        header = QWidget(self)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(6, 4, 6, 4)
+        header_layout.setSpacing(6)
+        self._file_label = QLabel("Nenhum arquivo aberto", header)
+        self._file_label.setStyleSheet("color: #888;")  # subtle by default
+        header_layout.addWidget(self._file_label, stretch=1)
+        self._analyze_button = QPushButton("Analisar", header)
+        self._analyze_button.setToolTip(
+            "Pede à IA para analisar o arquivo aberto "
+            "(use quando o arquivo foi editado ou se a análise está em cache)."
+        )
+        self._analyze_button.setEnabled(False)
+        self._analyze_button.clicked.connect(self._on_analyze_clicked)
+        header_layout.addWidget(self._analyze_button, stretch=0)
+        outer.addWidget(header, stretch=0)
+
+        # Middle: web view (markdown render).
         self._web = QWebEngineView(self)
         outer.addWidget(self._web, stretch=1)
 
@@ -215,7 +235,7 @@ class VisualizerPanel(QWidget):
         input_row = QHBoxLayout()
         self._input = QPlainTextEdit(self._chat_panel)
         self._input.setPlaceholderText(
-            "Pergunte à IA... (Enter envia, Shift+Enter quebra linha)"
+            "Pergunte à IA sobre o arquivo aberto... (Enter envia, Shift+Enter quebra linha)"
         )
         self._input.setFixedHeight(70)
         # Enter vs Shift+Enter handling — see eventFilter below.
@@ -252,7 +272,13 @@ class VisualizerPanel(QWidget):
         self._web.setHtml(self._render_idle(theme))
 
     def show_loading(self, label: str = "file", theme: str = "dark") -> None:
-        """Show a 'Analyzing <label>...' placeholder with spinner while inference runs."""
+        """Show a 'Analyzing <label>...' placeholder with spinner while inference runs.
+
+        Does NOT touch the Analisar button — callers that want to
+        disable the button should use :meth:`set_analyze_busy` directly.
+        The chat uses show_loading for free-form replies and should
+        leave the file analysis button alone.
+        """
         self.last_markdown = None
         self.last_error = None
         self._web.setHtml(self._render_loading(label, theme))
@@ -263,6 +289,16 @@ class VisualizerPanel(QWidget):
         self.last_error = None
         self._web.setHtml(build_html_template(text, theme=theme))
 
+    def show_cached(self, text: str, theme: str | None = None) -> None:
+        """Render a response that came from the cache (no AI call was made).
+
+        Public attrs set:
+        - ``from_cache`` becomes True so the consumer can show a "do
+          cache" badge if it wants to.
+        """
+        self._from_cache = True
+        self.show_markdown(text, theme=theme or self._current_theme)
+
     def show_error(self, message: str, theme: str = "dark") -> None:
         """Display an error message (no AI call)."""
         self.last_markdown = None
@@ -272,6 +308,38 @@ class VisualizerPanel(QWidget):
     def set_theme(self, theme: str) -> None:
         """Remember the active theme for chat renders (called by MainWindow)."""
         self._current_theme = theme
+
+    def set_current_file(self, path: str | None) -> None:
+        """Update the header label + enable the Analisar button accordingly.
+
+        Called by MainWindow when a file is selected. ``None`` clears
+        the label and disables the button.
+        """
+        if path is None:
+            self._file_label.setText("Nenhum arquivo aberto")
+            self._analyze_button.setEnabled(False)
+        else:
+            from pathlib import Path
+            self._file_label.setText(f"Arquivo: {Path(path).name}")
+            self._analyze_button.setEnabled(True)
+
+    def _set_analyze_busy(self, busy: bool) -> None:
+        """Disable the Analisar button while a worker is running.
+
+        Distinct from generic :meth:`show_loading` so chat activity does
+        not block the manual file-analysis button.
+        """
+        if busy:
+            self._analyze_button.setEnabled(False)
+            self._analyze_button.setText("Analisando...")
+        else:
+            self._analyze_button.setText("Analisar")
+            if self._file_label.text() != "Nenhum arquivo aberto":
+                self._analyze_button.setEnabled(True)
+
+    def _on_analyze_clicked(self) -> None:
+        """Handler for the manual Analisar button — re-emits upstream."""
+        self.analyze_requested.emit()
 
     # ----- Chat API ----------------------------------------------------------
 
@@ -329,29 +397,33 @@ class VisualizerPanel(QWidget):
             ```
 
             Histórico recente:
-            User: <u1>
-            Assistant: <a1>
+            Usuário: <u1>
+            Assistente: <a1>
             ...
 
-            User: <new message>
-            Assistant:
+            Usuário: <new message>
+            Assistente:
         """
         parts: list[str] = []
         if self._file_context_path is not None and self._file_context_content is not None:
             basename = os.path.basename(self._file_context_path)
-            parts.append(f"Contexto: arquivo {basename}")
+            parts.append(
+                f"Contexto: o usuário está com o arquivo {basename} aberto. "
+                "O conteúdo completo está abaixo dentro de um bloco de código. "
+                "Use esse conteúdo para responder como se você tivesse acesso direto ao arquivo."
+            )
             parts.append(f"```\n{self._file_context_content}\n```")
         # Recent history (last N turns with answers).
         recent = [t for t in self.chat_history if t.assistant is not None][
             -_CHAT_PROMPT_CONTEXT_TURNS:
         ]
         if recent:
-            lines: list[str] = ["Histórico recente:"]
+            lines: list[str] = ["Histórico recente da conversa:"]
             for t in recent:
-                lines.append(f"User: {t.user}")
-                lines.append(f"Assistant: {t.assistant}")
+                lines.append(f"Usuário: {t.user}")
+                lines.append(f"Assistente: {t.assistant}")
             parts.append("\n".join(lines))
-        parts.append(f"User: {user_msg}\nAssistant:")
+        parts.append(f"Usuário: {user_msg}\nAssistente:")
         return "\n\n".join(parts)
 
     # ----- Internal helpers --------------------------------------------------
@@ -415,7 +487,7 @@ class VisualizerPanel(QWidget):
         for turn in self.chat_history:
             sections.append(f"**Você:** {turn.user}")
             if turn.assistant is None:
-                sections.append("_(aguardando resposta...)_")
+                sections.append("_(aguardando resposta da IA...)_")
             else:
                 sections.append(turn.assistant)
         self.show_markdown("\n\n---\n\n".join(sections), theme=self._current_theme)

@@ -18,9 +18,9 @@ def test_explorer_has_three_action_buttons(qapp, tmp_path: Path) -> None:
     assert hasattr(panel, "_select_button")
     assert hasattr(panel, "_new_folder_button")
     assert hasattr(panel, "_refresh_button")
-    assert panel._select_button.text() == "Select Folder"
-    assert panel._new_folder_button.text() == "+Folder"
-    assert panel._refresh_button.text() == "Refresh"
+    assert panel._select_button.text() == "Selecionar Pasta"
+    assert panel._new_folder_button.text() == "+Pasta"
+    assert panel._refresh_button.text() == "Atualizar"
 
 
 # ----- Select Folder -------------------------------------------------------

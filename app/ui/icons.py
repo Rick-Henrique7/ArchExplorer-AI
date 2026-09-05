@@ -53,6 +53,15 @@ class CustomIconProvider(QFileIconProvider):
     DEFAULT_FILE_ICON: Final[str] = "mdi.file"
     DEFAULT_DIR_ICON: Final[str] = "mdi.folder"
 
+    # Icon colors per theme. Picked to match the QSS body text colors so
+    # the tree icons blend with the text in both palettes.
+    # - dark: github-markdown-dark foreground (#c9d1d9)
+    # - light: github-markdown-light foreground (#24292f)
+    THEME_COLORS: Final[dict[str, str]] = {
+        "dark": "#c9d1d9",
+        "light": "#24292f",
+    }
+
     def __init__(self, color: str | None = None) -> None:
         super().__init__()
         self._color = color
@@ -100,3 +109,11 @@ class CustomIconProvider(QFileIconProvider):
         """
         self._color = color
         self._cache.clear()
+
+    def set_theme(self, theme: str) -> None:
+        """Set the icon color from a theme name and invalidate the cache.
+
+        Falls back to the dark color if the theme is unknown. Call this
+        whenever the ThemeManager emits a theme-change signal.
+        """
+        self.set_color(self.THEME_COLORS.get(theme, self.THEME_COLORS["dark"]))

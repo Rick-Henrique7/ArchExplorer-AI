@@ -67,6 +67,59 @@ def test_loading_html_template_has_spinner(qapp) -> None:
     assert "spinner" in tpl.lower()
 
 
+# ----- Idle/Loading/Error templates in Portuguese (hotfix) -----------------
+
+
+def test_idle_template_is_in_portuguese(qapp) -> None:
+    tpl = VisualizerPanel._IDLE_HTML
+    assert "Selecione um arquivo" in tpl
+    assert "Analisar" in tpl
+
+
+def test_loading_template_is_in_portuguese(qapp) -> None:
+    tpl = VisualizerPanel._LOADING_HTML_TEMPLATE
+    assert "Analisando" in tpl
+    assert "gerando" in tpl
+
+
+def test_error_template_is_in_portuguese(qapp) -> None:
+    tpl = VisualizerPanel._ERROR_HTML_TEMPLATE
+    assert "Erro" in tpl
+
+
+# ----- Manual Analisar button (hotfix) -------------------------------------
+
+
+def test_analyze_button_starts_disabled(qapp) -> None:
+    """No file is bound at construction, so Analisar is disabled."""
+    panel = VisualizerPanel()
+    assert panel._analyze_button.isEnabled() is False
+
+
+def test_set_current_file_enables_analyze_button(qapp) -> None:
+    panel = VisualizerPanel()
+    panel.set_current_file("/tmp/x.py")
+    assert panel._analyze_button.isEnabled() is True
+    assert "x.py" in panel._file_label.text()
+
+
+def test_set_current_file_to_none_disables_analyze_button(qapp) -> None:
+    panel = VisualizerPanel()
+    panel.set_current_file("/tmp/x.py")
+    panel.set_current_file(None)
+    assert panel._analyze_button.isEnabled() is False
+    assert "Nenhum arquivo" in panel._file_label.text()
+
+
+def test_analyze_requested_signal_fires(qapp) -> None:
+    panel = VisualizerPanel()
+    captured: list[int] = []
+    panel.analyze_requested.connect(lambda: captured.append(1))
+    panel.set_current_file("/tmp/x.py")
+    panel._analyze_button.click()
+    assert captured == [1]
+
+
 # ----- show_error -----------------------------------------------------------
 
 

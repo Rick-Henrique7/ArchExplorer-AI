@@ -18,6 +18,7 @@ from app.services import (
     IAIProvider,
     MockAIProvider,
     OllamaProvider,
+    SYSTEM_PROMPT,
 )
 
 
@@ -242,7 +243,7 @@ def test_engine_provider_property_returns_injected_provider() -> None:
 
 
 def test_engine_generate_component_uses_prompt_template() -> None:
-    provider = MockAIProvider({"Requirements:": "GENERATED_CODE"})
+    provider = MockAIProvider({"Requisitos:": "GENERATED_CODE"})
     engine = AIEngine(provider)
     out = engine.generate_component("Implement a Calculator", "/path/to/calc.py")
     assert out == "GENERATED_CODE"
@@ -260,7 +261,7 @@ def test_engine_generate_component_passes_context_path() -> None:
 
 
 def test_engine_analyze_architecture_uses_provider() -> None:
-    provider = MockAIProvider({"Patterns": "## Patterns\n- Singleton"})
+    provider = MockAIProvider({"Padrões": "## Padrões\n- Singleton"})
     engine = AIEngine(provider)
     out = engine.analyze_architecture("class Foo: pass", "python")
     assert "Singleton" in out
@@ -268,7 +269,7 @@ def test_engine_analyze_architecture_uses_provider() -> None:
 
 def test_engine_extract_uml_structure() -> None:
     mermaid = "```mermaid\nclassDiagram\n  class Foo\n```"
-    provider = MockAIProvider({"Convert the following": mermaid})
+    provider = MockAIProvider({"Converta o código": mermaid})
     engine = AIEngine(provider)
     out = engine.extract_uml_structure("class Foo: pass")
     assert "classDiagram" in out
@@ -302,13 +303,48 @@ def test_engine_propagates_provider_errors() -> None:
 
 
 # ---------------------------------------------------------------------------
+# SYSTEM_PROMPT (hotfix)
+# ---------------------------------------------------------------------------
+
+
+def test_system_prompt_forces_portuguese() -> None:
+    """The system prompt must tell the model to answer in pt-BR."""
+    assert "português" in SYSTEM_PROMPT.lower()
+
+
+def test_system_prompt_tells_model_file_content_is_included() -> None:
+    """The system prompt must tell the model the file is in the user prompt."""
+    assert "arquivo" in SYSTEM_PROMPT.lower()
+    assert "prompt" in SYSTEM_PROMPT.lower()
+
+
+def test_all_pipelines_send_system_prompt() -> None:
+    """Every AIEngine method must forward SYSTEM_PROMPT to the provider."""
+    captured: list[dict] = []
+
+    class _Capture:
+        def generate(self, prompt, *, system=None, temperature=None):
+            captured.append({"prompt": prompt, "system": system, "temperature": temperature})
+            return "ok"
+
+    engine = AIEngine(_Capture())
+    engine.generate_component("x", "/tmp/x.py")
+    engine.analyze_architecture("x", "python")
+    engine.extract_uml_structure("x")
+    engine.edit_file("x", "do", "python")
+    assert len(captured) == 4
+    for entry in captured:
+        assert entry["system"] == SYSTEM_PROMPT
+
+
+# ---------------------------------------------------------------------------
 # AIEngine.edit_file (Change 005)
 # ---------------------------------------------------------------------------
 
 
 def test_engine_edit_file_uses_prompt_template() -> None:
     """The 'edit_file' pipeline builds a prompt with file_type, instruction, code."""
-    provider = MockAIProvider({"User instruction:": "EDITED"})
+    provider = MockAIProvider({"Instrução do usuário:": "EDITED"})
     engine = AIEngine(provider)
     out = engine.edit_file("def foo():\n    pass\n", "add docstring", "python")
     assert out == "EDITED"

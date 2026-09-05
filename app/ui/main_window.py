@@ -30,6 +30,16 @@ from app.ui.visualizer import VisualizerPanel
 _SETTINGS_ROOT_DIR = "workspace/root_dir"
 
 
+def _content_hash(content: str) -> str:
+    """Stable hash of file content for cache invalidation.
+
+    SHA-1 is used (not MD5) because it's in the stdlib and the content
+    is already in memory — we just need a fast, deterministic key.
+    """
+    import hashlib
+    return hashlib.sha1(content.encode("utf-8")).hexdigest()
+
+
 class MainWindow(QMainWindow):
     """ArchExplorer AI main window.
 
@@ -58,6 +68,9 @@ class MainWindow(QMainWindow):
     DEFAULT_SIZE: tuple[int, int] = (1100, 700)
     SPLITTER_STRETCH: tuple[int, int, int] = (25, 45, 30)
 
+    # Cache configuration: how many file analyses to keep in memory.
+    _ANALYSIS_CACHE_MAX: int = 32
+
     def __init__(
         self,
         services: dict[str, Any] | None = None,
@@ -75,6 +88,19 @@ class MainWindow(QMainWindow):
         self._pending_edit_path: str | None = None
         self._pending_edit_original: str | None = None
         self._pending_edit_instruction: str | None = None
+        # Analysis cache: file_path -> (content_hash, markdown). The
+        # content_hash is the SHA-1 of the file's bytes; if the file
+        # changes (or is saved with Ctrl+S), the hash won't match and
+        # the cache entry is treated as a miss. LRU eviction at
+        # _ANALYSIS_CACHE_MAX entries.
+        self._analysis_cache: dict[str, tuple[str, str]] = {}
+        # Track the currently open file (path, content, file_type) so the
+        # manual Analisar button has the data to send.
+        self._current_file: tuple[str, str, str] | None = None
+        # Pending analysis (set by _on_analyze_requested, read by
+        # _on_analysis_finished to write the result back into the cache).
+        self._pending_analysis_path: str | None = None
+        self._pending_analysis_hash: str | None = None
         self._build_ui()
         self._wire()
         if self._theme_manager is not None:
@@ -117,16 +143,25 @@ class MainWindow(QMainWindow):
         # Tell the visualizer the active theme so its internal chat
         # renders use the right body colors.
         if self._theme_manager is not None:
-            self._visualizer.set_theme(self._theme_manager.effective().value)
+            effective_theme = self._theme_manager.effective().value
+            self._visualizer.set_theme(effective_theme)
+            # Recolor the file tree icons to match the theme — without
+            # this, MDI icons stay white in light mode and disappear.
+            self._file_explorer.apply_theme(effective_theme)
 
     def _wire(self) -> None:
-        # File selection -> editor + visualizer file context + AI analysis.
+        # File selection -> editor + visualizer file context (NO auto
+        # analysis — Change 005 + hotfix: user must click Analisar).
         self._file_explorer.file_selected.connect(self._on_file_selected)
         # Root changes -> QSettings.
         self._file_explorer.root_changed.connect(self._on_root_changed)
         # Editor save / AI-edit flows.
         self._code_editor.save_failed.connect(self._on_editor_save_failed)
         self._code_editor.ai_edit_requested.connect(self._on_ai_edit_requested)
+        # Editor saved -> invalidate cache for that file (content changed).
+        self._code_editor.file_saved.connect(self._on_file_saved)
+        # Manual Analisar button -> cache check + worker.
+        self._visualizer.analyze_requested.connect(self._on_analyze_requested)
         # Visualizer chat -> background worker -> add_chat_response.
         self._visualizer.chat_requested.connect(self._on_chat_requested)
 
@@ -165,6 +200,9 @@ class MainWindow(QMainWindow):
         self._theme_manager.apply(theme)
         effective = self._theme_manager.effective().value
         self._visualizer.set_theme(effective)
+        # Recolor the file tree icons — without this they stay white in
+        # light mode and become invisible against the white background.
+        self._file_explorer.apply_theme(effective)
         if self._visualizer.last_markdown is not None:
             self._visualizer.show_markdown(self._visualizer.last_markdown, theme=effective)
         for t, action in self._theme_actions.items():
@@ -175,6 +213,7 @@ class MainWindow(QMainWindow):
         self._theme_manager.cycle()
         effective = self._theme_manager.effective().value
         self._visualizer.set_theme(effective)
+        self._file_explorer.apply_theme(effective)
         for t, action in self._theme_actions.items():
             action.setChecked(t == self._theme_manager.current())
         if self._visualizer.last_markdown is not None:
@@ -186,13 +225,18 @@ class MainWindow(QMainWindow):
     def _on_file_selected(self, path: str) -> None:
         """Handle a file click from the explorer.
 
+        Updated for hotfix: the AI is NO LONGER auto-invoked when the
+        user picks a file. The user must click the manual Analisar
+        button to trigger analysis. The flow now is:
+
         1. Validate the file (inspect_file) — bail early with an error if
            extension/size/encoding reject it.
         2. Update the code editor synchronously with the file content.
         3. Bind the file context on the visualizer (so chat prompts can
            reference it).
-        4. Show a 'loading' placeholder in the visualizer.
-        5. Dispatch an :class:`AnalysisWorker` to the QThreadPool.
+        4. Update the visualizer's file label + enable Analisar.
+        5. If the cache has a hit for this exact file content, render it
+           immediately. Otherwise show the idle state ("click Analisar").
         """
         theme = self._current_theme_name()
         result = inspect_file(path)
@@ -200,40 +244,114 @@ class MainWindow(QMainWindow):
             self._code_editor.clear()
             # Drop any stale file context.
             self._visualizer.set_file_context(None, None)
+            self._visualizer.set_current_file(None)
             self._visualizer.show_error(result.error_message, theme=theme)
+            self._current_file = None
             return
 
         # Synchronous UI update — editor always shows the file content
-        # even if the AI call is still running. Pass the path + file_type
+        # even if the AI is not (yet) called. Pass the path + file_type
         # so Save / Edit-with-AI are enabled and the AI engine knows
         # the language.
         self._code_editor.set_content(
             result.content, path=path, file_type=result.file_type
         )
         self._visualizer.set_file_context(path, result.content)
-        self._visualizer.show_loading(Path(path).name, theme=theme)
+        self._visualizer.set_current_file(path)
+        # Remember the open file so the manual Analisar button can read
+        # it without re-inspecting.
+        self._current_file = (path, result.content, result.file_type)
+
+        # Cache lookup: if the exact content is cached, render it
+        # immediately and skip the AI call.
+        content_hash = _content_hash(result.content)
+        cached = self._analysis_cache.get(path)
+        if cached is not None and cached[0] == content_hash:
+            self._visualizer.show_cached(cached[1], theme=theme)
+            return
+
+        # No cache hit — show the idle state and wait for the user to
+        # click Analisar.
+        self._visualizer.show_idle(theme=theme)
+
+    @Slot()
+    def _on_analyze_requested(self) -> None:
+        """Handle the manual Analisar button.
+
+        Checks the cache first; if the file's content hash matches a
+        previous analysis, renders the cached result without calling
+        the AI. Otherwise spawns an :class:`AnalysisWorker` and shows
+        the loading state.
+        """
+        if self._current_file is None:
+            return
+        path, content, file_type = self._current_file
+        theme = self._current_theme_name()
+        content_hash = _content_hash(content)
+        cached = self._analysis_cache.get(path)
+        if cached is not None and cached[0] == content_hash:
+            self._visualizer.show_cached(cached[1], theme=theme)
+            return
 
         engine = self._services.get("ai_engine")
         if engine is None:
             self._visualizer.show_error(
-                "No AI engine configured (services['ai_engine'] missing).",
+                "Motor de IA não configurado (services['ai_engine'] ausente).",
                 theme=theme,
             )
             return
 
+        self._visualizer.show_loading(Path(path).name, theme=theme)
+        # Mark the Analisar button as busy so the user cannot re-trigger
+        # while a worker is in flight.
+        self._visualizer._set_analyze_busy(True)
+        # Stash the path + hash on the main window so the finished slot
+        # can write the result back into the cache.
+        self._pending_analysis_path = path
+        self._pending_analysis_hash = content_hash
         worker = AnalysisWorker(
             ai_engine=engine,
-            code_content=result.content,
-            file_type=result.file_type,
+            code_content=content,
+            file_type=file_type,
             file_label=Path(path).name,
         )
         worker.signals.finished.connect(self._on_analysis_finished)
-        worker.signals.failed.connect(self._visualizer.show_error)
+        # Direct connection to show_error (string -> string) and a
+        # separate slot to reset the Analisar button when the worker
+        # fails — show_error alone doesn't know the button exists.
+        worker.signals.failed.connect(self._on_analysis_failed)
         QThreadPool.globalInstance().start(worker)
 
     @Slot(str)
+    def _on_analysis_failed(self, message: str) -> None:
+        self._visualizer._set_analyze_busy(False)
+        self._visualizer.show_error(message, theme=self._current_theme_name())
+
+    @Slot(str)
     def _on_analysis_finished(self, result: str) -> None:
+        """Cache the result, then render it in the visualizer."""
+        path = getattr(self, "_pending_analysis_path", None)
+        content_hash = getattr(self, "_pending_analysis_hash", None)
+        if path is not None and content_hash is not None:
+            self._store_in_cache(path, content_hash, result)
+        self._pending_analysis_path = None
+        self._pending_analysis_hash = None
+        self._visualizer._set_analyze_busy(False)
         self._visualizer.show_markdown(result, theme=self._current_theme_name())
+
+    def _store_in_cache(self, path: str, content_hash: str, result: str) -> None:
+        """LRU cache insert — drops the oldest entry past the cap."""
+        # Pop the path if already there so insertion order == recency.
+        self._analysis_cache.pop(path, None)
+        self._analysis_cache[path] = (content_hash, result)
+        while len(self._analysis_cache) > self._ANALYSIS_CACHE_MAX:
+            oldest_path = next(iter(self._analysis_cache))
+            self._analysis_cache.pop(oldest_path, None)
+
+    @Slot(str)
+    def _on_file_saved(self, path: str) -> None:
+        """Invalidate the cache for a file the user just saved (Ctrl+S)."""
+        self._analysis_cache.pop(path, None)
 
     # ----- Root change (QSettings) -----------------------------------------
 
@@ -245,7 +363,7 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_editor_save_failed(self, message: str) -> None:
-        self._visualizer.show_error(f"Save failed: {message}", theme=self._current_theme_name())
+        self._visualizer.show_error(f"Falha ao salvar: {message}", theme=self._current_theme_name())
 
     @Slot(str, str)
     def _on_ai_edit_requested(self, path: str, instruction: str) -> None:
@@ -320,7 +438,7 @@ class MainWindow(QMainWindow):
             self._file_manager.write_file(path, new_content)
         except Exception as exc:  # FileOperationError or OSError
             self._visualizer.show_error(
-                f"Could not write edited file: {exc}",
+                f"Não foi possível gravar a edição: {exc}",
                 theme=self._current_theme_name(),
             )
             return
@@ -333,6 +451,13 @@ class MainWindow(QMainWindow):
             file_type=self._code_editor.current_file_type(),
         )
         self._visualizer.set_file_context(path, new_content)
+        # The file content just changed; the cached analysis (if any)
+        # is stale. Drop it and refresh the in-memory snapshot used by
+        # the Analisar button.
+        self._analysis_cache.pop(path, None)
+        self._current_file = (
+            path, new_content, self._code_editor.current_file_type() or "text"
+        )
         self._visualizer.show_markdown(
             f"**Edição aplicada.**\n\n```\n{new_content}\n```",
             theme=self._current_theme_name(),

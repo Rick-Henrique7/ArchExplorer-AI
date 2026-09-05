@@ -177,57 +177,81 @@ class MockAIProvider:
 # ---------------------------------------------------------------------------
 
 
-GENERATE_COMPONENT_PROMPT: Final[str] = """You are a code generator.
-Create a {component_type} component at: {context_path}
+# System prompt attached to every AI call. Two jobs:
+#   1. Force responses in Portuguese (pt-BR), even if the user types
+#      in English or another language. Qwen 2.5 Coder tends to mirror
+#      the input language, so this is needed to keep the UI consistent.
+#   2. Tell the model that any file content placed in the user prompt
+#      is the actual content the user is looking at — it can "see" the
+#      file. Without this, the model answers "I cannot see any file"
+#      even when the full content is included.
+SYSTEM_PROMPT: Final[str] = (
+    "Você é o assistente de IA integrado ao ArchExplorer AI. "
+    "Responda SEMPRE em português brasileiro (pt-BR), mesmo que a "
+    "pergunta esteja em outro idioma. "
+    "Quando o conteúdo de um arquivo for fornecido dentro do prompt "
+    "do usuário (entre blocos de código ```), trate-o como o arquivo "
+    "que o usuário está analisando — você tem acesso ao seu conteúdo "
+    "completo e deve referenciá-lo diretamente nas respostas. "
+    "Não invente informações que não estejam no código."
+)
 
-Requirements:
+
+GENERATE_COMPONENT_PROMPT: Final[str] = """Você é um gerador de código.
+Crie um componente {component_type} em: {context_path}
+
+Requisitos:
 {requirements}
 
-Output the complete file content only. No explanations, no markdown fences.
+Saída: o conteúdo completo do arquivo, sem explicações e sem blocos de
+marcação markdown. Apenas o código.
 """
 
 
-ANALYZE_ARCHITECTURE_PROMPT: Final[str] = """You are an expert software architect.
-Analyze the following {file_type} code:
+ANALYZE_ARCHITECTURE_PROMPT: Final[str] = """Você é um arquiteto de software especialista.
+Analise o seguinte código {file_type} que o usuário está visualizando
+agora no editor:
 
 ```
 {code_content}
 ```
 
-Identify:
-- Architectural patterns used
-- Coupling issues
-- Responsibility leaks
-- Refactoring suggestions
+Identifique:
+- Padrões arquiteturais utilizados
+- Problemas de acoplamento
+- Vazamentos de responsabilidade
+- Sugestões de refatoração
 
-Respond in markdown with sections: ## Patterns, ## Issues, ## Suggestions.
+Responda em markdown com as seções: ## Padrões, ## Problemas, ## Sugestões.
 """
 
 
-EXTRACT_UML_STRUCTURE_PROMPT: Final[str] = """Convert the following code into a Mermaid.js class diagram.
+EXTRACT_UML_STRUCTURE_PROMPT: Final[str] = """Converta o código a seguir em um diagrama de classes Mermaid.js.
 
-Code:
+Código:
 ```
 {code_content}
 ```
 
-Output ONLY the Mermaid.js code inside a ```mermaid``` block. No explanations, no other text.
+Saída: APENAS o código Mermaid.js dentro de um bloco ```mermaid```. Sem
+explicações, sem qualquer outro texto.
 """
 
 
-EDIT_FILE_PROMPT: Final[str] = """You are an expert code editor.
-Apply the requested change to the following {file_type} code.
+EDIT_FILE_PROMPT: Final[str] = """Você é um editor de código especialista.
+Aplique a alteração solicitada ao código {file_type} a seguir.
 
-User instruction:
+Instrução do usuário:
 {instruction}
 
-Original code:
+Código original:
 ```
 {code_content}
 ```
 
-Output the COMPLETE modified file. No explanations, no markdown fences, no preamble.
-The output MUST be a drop-in replacement of the original — same encoding, same line endings.
+Saída: o arquivo modificado COMPLETO. Sem explicações, sem blocos de
+marcação markdown, sem preâmbulo. A saída DEVE ser um substituto
+drop-in do original — mesma codificação, mesmas quebras de linha.
 """
 
 
@@ -269,7 +293,7 @@ class AIEngine:
             context_path=context_path,
             requirements=prompt,
         )
-        return self._provider.generate(full_prompt)
+        return self._provider.generate(full_prompt, system=SYSTEM_PROMPT)
 
     def analyze_architecture(self, code_content: str, file_type: str) -> str:
         """Ask the LLM to critique a code file's architecture."""
@@ -277,12 +301,16 @@ class AIEngine:
             file_type=file_type,
             code_content=code_content,
         )
-        return self._provider.generate(full_prompt, temperature=0.2)
+        return self._provider.generate(
+            full_prompt, system=SYSTEM_PROMPT, temperature=0.2
+        )
 
     def extract_uml_structure(self, code_content: str) -> str:
         """Ask the LLM to convert a code file into Mermaid.js syntax."""
         full_prompt = EXTRACT_UML_STRUCTURE_PROMPT.format(code_content=code_content)
-        return self._provider.generate(full_prompt, temperature=0.1)
+        return self._provider.generate(
+            full_prompt, system=SYSTEM_PROMPT, temperature=0.1
+        )
 
     def edit_file(
         self,
@@ -301,4 +329,6 @@ class AIEngine:
             instruction=instruction,
             code_content=content,
         )
-        return self._provider.generate(full_prompt, temperature=0.1)
+        return self._provider.generate(
+            full_prompt, system=SYSTEM_PROMPT, temperature=0.1
+        )
