@@ -1,0 +1,51 @@
+[project]
+name = "arch-explorer-ai"
+version = "0.1.0"
+description = "Desktop tool for analyzing, visualizing, and generating software architecture components using a local LLM."
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Henrique Moraes dos Santos", email = "henrique.mdsantos2003@gmail.com" },
+]
+keywords = ["architecture", "uml", "mermaid", "ai", "llm", "desktop", "pyside6"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+]
+
+# Runtime dependencies — kept in sync with requirements.txt
+dependencies = [
+    "PySide6>=6.8,<7",
+    "requests>=2.32",
+]
+
+[project.optional-dependencies]
+# Dev dependencies — kept in sync with requirements-dev.txt
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "pytest-mock>=3.14",
+]
+
+[project.urls]
+Homepage = "https://github.com/Rick-Henrique7/arch-explorer-ai"
+Repository = "https://github.com/Rick-Henrique7/arch-explorer-ai"
+Issues = "https://github.com/Rick-Henrique7/arch-explorer-ai/issues"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-v --tb=short --strict-markers"
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

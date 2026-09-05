@@ -1,0 +1,7 @@
+# ============================================================
+# Runtime dependencies
+# Source of truth: pyproject.toml [project.dependencies]
+# Keep in sync.
+# ============================================================
+PySide6>=6.8,<7
+requests>=2.32

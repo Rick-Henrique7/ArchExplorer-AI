@@ -1,0 +1,10 @@
+# ============================================================
+# Development / test dependencies
+# Source of truth: pyproject.toml [project.optional-dependencies.dev]
+# Keep in sync.
+# ============================================================
+-r requirements.txt
+
+pytest>=8
+pytest-cov>=5
+pytest-mock>=3.14

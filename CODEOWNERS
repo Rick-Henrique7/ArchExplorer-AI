@@ -1,0 +1,10 @@
+# Default owner for the whole repository.
+# Override per-path with more specific rules below.
+/                                         @Rick-Henrique7
+
+# Documentation and spec docs.
+/docs/                                    @Rick-Henrique7
+/changes/                                 @Rick-Henrique7
+
+# CI and templates.
+/.github/                                 @Rick-Henrique7
