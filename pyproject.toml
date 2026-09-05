@@ -41,9 +41,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Rick-Henrique7/arch-explorer-ai"
-Repository = "https://github.com/Rick-Henrique7/arch-explorer-ai"
-Issues = "https://github.com/Rick-Henrique7/arch-explorer-ai/issues"
+Homepage = "https://github.com/Rick-Henrique7/ArchExplorer-AI"
+Repository = "https://github.com/Rick-Henrique7/ArchExplorer-AI"
+Issues = "https://github.com/Rick-Henrique7/ArchExplorer-AI/issues"
 
 [tool.pytest.ini_options]
 minversion = "8.0"
