@@ -66,4 +66,5 @@ $RECYCLE.BIN/
 *.log
 *.tmp
 *.bak
+.tmp_*.py
 .session/

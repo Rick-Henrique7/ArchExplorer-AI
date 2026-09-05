@@ -2,7 +2,7 @@
 
 Run with::
 
-    py -m app.main
+    python -m app.main
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import sys
 from PySide6.QtWidgets import QApplication
 
 from app import __version__
+from app.services import AIEngine, OllamaProvider
 from app.ui.main_window import MainWindow
 
 APP_NAME = "ArchExplorer AI"
@@ -27,7 +28,13 @@ def main() -> int:
     app.setOrganizationName(APP_ORG)
     app.setOrganizationDomain(APP_DOMAIN)
 
-    window = MainWindow()
+    # Bootstrap default services. Tests override via
+    # ``MainWindow(services={"ai_engine": AIEngine(MockAIProvider())})``.
+    services = {
+        "ai_engine": AIEngine(OllamaProvider()),
+    }
+
+    window = MainWindow(services=services)
     window.show()
     return app.exec()
 

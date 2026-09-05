@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThreadPool, Slot
 from PySide6.QtWidgets import (
     QMainWindow,
     QSplitter,
@@ -12,32 +14,31 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.ui.analysis_worker import AnalysisWorker
 from app.ui.code_editor import CodeEditorPanel
 from app.ui.file_explorer import FileExplorerPanel
+from app.ui.file_inspector import inspect_file
 from app.ui.visualizer import VisualizerPanel
 
 
 class MainWindow(QMainWindow):
     """ArchExplorer AI main window.
 
-    Hosts three resizable panels in a horizontal ``QSplitter``. Future
-    changes inject concrete services through the ``services`` dict
-    (Dependency Inversion — see ``docs/guidelines/diretriz.md``).
+    Hosts three resizable panels in a horizontal ``QSplitter``:
 
-    Parameters
-    ----------
-    services:
-        Optional map of injected services. The skeleton ignores it; later
-        changes consume it (e.g. ``services["file_manager"]``,
-        ``services["ai_engine"]``).
-    parent:
-        Optional parent widget for Qt ownership semantics.
+    - :class:`FileExplorerPanel` — real file tree (``QTreeView``)
+    - :class:`CodeEditorPanel` — read-only file viewer
+    - :class:`VisualizerPanel` — ``QWebEngineView`` rendering LLM responses
+
+    The MainWindow accepts an optional ``services`` dict for dependency
+    injection (per ``docs/guidelines/diretriz.md`` — DIP). Required key:
+    ``"ai_engine"``. Missing services produce a clear error in the
+    visualizer instead of a crash.
     """
 
-    WINDOW_TITLE = "ArchExplorer AI"
-    DEFAULT_SIZE = (1100, 700)
-    # Relative widths of the three columns: 25% / 45% / 30%
-    SPLITTER_STRETCH = (25, 45, 30)
+    WINDOW_TITLE: str = "ArchExplorer AI"
+    DEFAULT_SIZE: tuple[int, int] = (1100, 700)
+    SPLITTER_STRETCH: tuple[int, int, int] = (25, 45, 30)
 
     def __init__(
         self,
@@ -47,12 +48,14 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self._services: dict[str, Any] = services if services is not None else {}
         self._build_ui()
+        self._wire()
 
     def _build_ui(self) -> None:
         self.setWindowTitle(self.WINDOW_TITLE)
         self.resize(*self.DEFAULT_SIZE)
 
-        self._file_explorer = FileExplorerPanel(self)
+        cwd = Path(os.getcwd())
+        self._file_explorer = FileExplorerPanel(root=cwd, parent=self)
         self._code_editor = CodeEditorPanel(self)
         self._visualizer = VisualizerPanel(self)
 
@@ -60,9 +63,8 @@ class MainWindow(QMainWindow):
         self._splitter.addWidget(self._file_explorer)
         self._splitter.addWidget(self._code_editor)
         self._splitter.addWidget(self._visualizer)
-        self._splitter.setStretchFactor(0, self.SPLITTER_STRETCH[0])
-        self._splitter.setStretchFactor(1, self.SPLITTER_STRETCH[1])
-        self._splitter.setStretchFactor(2, self.SPLITTER_STRETCH[2])
+        for i, stretch in enumerate(self.SPLITTER_STRETCH):
+            self._splitter.setStretchFactor(i, stretch)
         self._splitter.setChildrenCollapsible(False)
 
         central = QWidget(self)
@@ -71,7 +73,49 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._splitter)
         self.setCentralWidget(central)
 
-    # ----- Public API used by tests and future controllers -----
+    def _wire(self) -> None:
+        self._file_explorer.file_selected.connect(self._on_file_selected)
+
+    @Slot(str)
+    def _on_file_selected(self, path: str) -> None:
+        """Handle a file click from the explorer.
+
+        1. Validate the file (inspect_file) — bail early with an error if
+           extension/size/encoding reject it.
+        2. Update the code editor synchronously with the file content.
+        3. Show a 'loading' placeholder in the visualizer.
+        4. Dispatch an :class:`AnalysisWorker` to the QThreadPool.
+        5. Worker signals update the visualizer when finished / failed.
+        """
+        result = inspect_file(path)
+        if not result.ok:
+            self._code_editor.clear()
+            self._visualizer.show_error(result.error_message)
+            return
+
+        # Synchronous UI update — editor always shows the file content
+        # even if the AI call is still running.
+        self._code_editor.set_content(result.content)
+        self._visualizer.show_loading(Path(path).name)
+
+        engine = self._services.get("ai_engine")
+        if engine is None:
+            self._visualizer.show_error(
+                "No AI engine configured (services['ai_engine'] missing).",
+            )
+            return
+
+        worker = AnalysisWorker(
+            ai_engine=engine,
+            code_content=result.content,
+            file_type=result.file_type,
+            file_label=Path(path).name,
+        )
+        worker.signals.finished.connect(self._visualizer.show_markdown)
+        worker.signals.failed.connect(self._visualizer.show_error)
+        QThreadPool.globalInstance().start(worker)
+
+    # ----- Public API used by tests and future controllers ------------------
 
     def panels(
         self,
@@ -84,5 +128,5 @@ class MainWindow(QMainWindow):
         return self._splitter
 
     def services(self) -> dict[str, Any]:
-        """Return the injected services map (read-only view)."""
+        """Return a copy of the injected services map."""
         return dict(self._services)
