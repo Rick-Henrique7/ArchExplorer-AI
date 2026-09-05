@@ -44,6 +44,22 @@ GITHUB_MARKDOWN_CSS: str = GITHUB_MARKDOWN_DARK_CSS
 
 MERMAID_CDN: str = "https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"
 
+# --- Body color scheme per theme -------------------------------------------
+# The github-markdown CSS only styles ``.markdown-body`` (the article), not
+# the ``<body>`` itself. QWebEngineView applies Chromium's UA default body
+# color (which may differ from what we want depending on the OS theme), so
+# we set the body background and text color explicitly here. Values match
+# the github-markdown-dark / -light palettes so the article blends in.
+
+_THEME_BODY_BG: dict[str, str] = {
+    "dark": "#0d1117",      # matches .markdown-body background in github-markdown-dark
+    "light": "#ffffff",     # matches .markdown-body background in github-markdown-light
+}
+_THEME_BODY_COLOR: dict[str, str] = {
+    "dark": "#c9d1d9",      # matches .markdown-body color in github-markdown-dark
+    "light": "#24292f",     # matches .markdown-body color in github-markdown-light
+}
+
 # --- HTML template ----------------------------------------------------------
 # Note: {{ and }} are escaped braces for str.format().
 
@@ -56,8 +72,16 @@ _HTML_TEMPLATE: str = """<!DOCTYPE html>
   <script src="{marked_cdn}"></script>
   <script src="{mermaid_cdn}"></script>
   <style>
-    body {{ box-sizing: border-box; margin: 0 auto; padding: 24px; max-width: 980px; }}
-    .markdown-body {{ background: transparent; }}
+    html, body {{
+      background-color: {body_bg};
+      color: {body_color};
+    }}
+    body {{
+      box-sizing: border-box;
+      margin: 0 auto;
+      padding: 24px;
+      max-width: 980px;
+    }}
   </style>
   <script>
     window.addEventListener('error', function(e) {{
@@ -100,7 +124,8 @@ def build_html_template(markdown_text: str, theme: str = "dark") -> str:
         embedding in the page to prevent XSS via markdown payloads.
     theme:
         ``"dark"`` or ``"light"`` — selects the matching github-markdown-css
-        variant so the rendered page is readable in both app themes.
+        variant and the matching body background/foreground colors so the
+        page is readable in both app themes.
 
     Returns
     -------
@@ -108,10 +133,14 @@ def build_html_template(markdown_text: str, theme: str = "dark") -> str:
     ``QWebEngineView.setHtml()``.
     """
     css_url = GITHUB_MARKDOWN_LIGHT_CSS if theme == "light" else GITHUB_MARKDOWN_DARK_CSS
+    body_bg = _THEME_BODY_BG.get(theme, _THEME_BODY_BG["dark"])
+    body_color = _THEME_BODY_COLOR.get(theme, _THEME_BODY_COLOR["dark"])
     escaped = escape(markdown_text)
     return _HTML_TEMPLATE.format(
         github_markdown_css=css_url,
         marked_cdn=MARKED_CDN,
         mermaid_cdn=MERMAID_CDN,
+        body_bg=body_bg,
+        body_color=body_color,
         raw_md=escaped,
     )

@@ -12,6 +12,48 @@ from app.ui.html_template import (
 )
 
 
+def test_template_dark_theme_has_dark_body_styles() -> None:
+    """Dark theme must set body background + color explicitly (no UA default)."""
+    html = build_html_template("hello", theme="dark")
+    # Body must have an explicit dark background
+    assert "background-color: #0d1117" in html
+    # And an explicit light text color
+    assert "color: #c9d1d9" in html
+
+
+def test_template_light_theme_has_light_body_styles() -> None:
+    """Light theme must set body background + color explicitly."""
+    html = build_html_template("hello", theme="light")
+    assert "background-color: #ffffff" in html
+    assert "color: #24292f" in html
+
+
+def test_template_dark_uses_dark_css_variant() -> None:
+    html = build_html_template("hi", theme="dark")
+    assert "github-markdown-dark" in html
+    assert "github-markdown-light" not in html
+
+
+def test_template_light_uses_light_css_variant() -> None:
+    html = build_html_template("hi", theme="light")
+    assert "github-markdown-light" in html
+    assert "github-markdown-dark" not in html
+
+
+def test_template_default_theme_is_dark() -> None:
+    """Calling without theme arg defaults to dark for backward compatibility."""
+    html = build_html_template("hi")
+    assert "background-color: #0d1117" in html
+    assert "github-markdown-dark" in html
+
+
+def test_template_unknown_theme_falls_back_to_dark() -> None:
+    """Unknown theme string falls back to dark (safe default)."""
+    html = build_html_template("hi", theme="midnight-purple")
+    assert "background-color: #0d1117" in html
+    assert "github-markdown-dark" in html
+
+
 def test_template_includes_marked_cdn() -> None:
     html = build_html_template("")
     assert "marked.min.js" in html
