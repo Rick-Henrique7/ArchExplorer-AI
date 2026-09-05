@@ -30,8 +30,13 @@ def main() -> int:
 
     # Bootstrap default services. Tests override via
     # ``MainWindow(services={"ai_engine": AIEngine(MockAIProvider())})``.
+    # Note on timeout: the default in ``OllamaProvider`` is 120s, but the
+    # first request after the model is unloaded from RAM (Ollama default
+    # idle: 5 min) triggers a cold reload from disk, which can take
+    # 60-120s on slow disks for a 1.9-4.5 GB model. 300s gives a safe
+    # buffer without changing the public default of OllamaProvider.
     services = {
-        "ai_engine": AIEngine(OllamaProvider()),
+        "ai_engine": AIEngine(OllamaProvider(timeout=300.0)),
     }
 
     window = MainWindow(services=services)

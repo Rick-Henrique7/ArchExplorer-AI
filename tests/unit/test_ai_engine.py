@@ -63,6 +63,30 @@ def test_mock_satisfies_iai_provider_protocol() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_ollama_custom_timeout_is_accepted() -> None:
+    """The timeout parameter is honored (no validation rejects large values)."""
+    provider = OllamaProvider(timeout=300.0)
+    # The provider should not raise on construction with a custom timeout.
+    assert provider is not None
+
+
+def test_ollama_app_uses_300s_timeout() -> None:
+    """The app's bootstrap explicitly overrides to 300s for cold-reload safety.
+
+    This test guards against a regression where someone removes the explicit
+    timeout from app/main.py, which would cause the 120s default to
+    re-emerge and the user-visible AI flow to time out on slow disks.
+    """
+    import inspect
+    from app import main as app_main
+
+    source = inspect.getsource(app_main)
+    assert "OllamaProvider(timeout=300.0)" in source, (
+        "app/main.py must instantiate OllamaProvider with timeout=300.0 "
+        "to handle cold reloads of large models (1.9 GB+). Found:\n" + source
+    )
+
+
 def test_ollama_generate_success() -> None:
     with requests_mock.Mocker() as m:
         m.post(
