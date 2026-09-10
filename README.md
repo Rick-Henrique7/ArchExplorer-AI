@@ -369,6 +369,10 @@ Após merge via PR, a pasta vai pra `changes/archive/` num commit
 
 - [`docs/visão-geral.md`](./docs/vis%C3%A3o-geral.md) — visão geral
   do projeto, personas, casos de uso.
+- [`docs/decisions/decisions.md`](./docs/decisions/decisions.md) —
+  **decisões técnicas**: por que cada tecnologia foi escolhida,
+  o que foi rejeitado, trade-offs aceitos. **Leia este se for
+  contribuir ou fork.**
 - [`docs/frontend/front.md`](./docs/frontend/front.md) — spec do frontend
   (widgets, fluxos, shortcuts).
 - [`docs/backend/backend.md`](./docs/backend/backend.md) — spec do
