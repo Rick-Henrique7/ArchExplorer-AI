@@ -17,6 +17,7 @@ from app.services.ai_engine import (
     MockAIProvider,
     OllamaProvider,
 )
+from app.services.catalog_service import CatalogoService, default_catalog_path, normalize_tags
 from app.services.diagram_generator import (
     BaseDiagramRenderer,
     MermaidRenderer,
@@ -24,6 +25,7 @@ from app.services.diagram_generator import (
 from app.services.exceptions import (
     AIServiceUnavailableError,
     ArchExplorerError,
+    CatalogoError,
     DiagramParsingError,
     FileOperationError,
 )
@@ -33,6 +35,7 @@ from app.services.file_manager import (
     FileItem,
     FileManager,
 )
+from app.services.models import Entry, Tag
 
 __all__ = [
     "AIEngine",
@@ -40,10 +43,13 @@ __all__ = [
     "ANALYZE_ARCHITECTURE_PROMPT",
     "ArchExplorerError",
     "BaseDiagramRenderer",
+    "CatalogoError",
+    "CatalogoService",
     "ClipboardMode",
     "ClipboardState",
     "DiagramParsingError",
     "EDIT_FILE_PROMPT",
+    "Entry",
     "EXTRACT_UML_STRUCTURE_PROMPT",
     "FileItem",
     "FileManager",
@@ -54,4 +60,7 @@ __all__ = [
     "MockAIProvider",
     "OllamaProvider",
     "SYSTEM_PROMPT",
+    "Tag",
+    "default_catalog_path",
+    "normalize_tags",
 ]

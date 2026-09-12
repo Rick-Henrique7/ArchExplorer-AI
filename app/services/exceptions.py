@@ -39,3 +39,12 @@ class AIServiceUnavailableError(ArchExplorerError):
 
 class DiagramParsingError(ArchExplorerError):
     """Raised when an LLM response cannot be coerced into a valid diagram syntax."""
+
+
+class CatalogoError(ArchExplorerError):
+    """Raised when the personal catalog cannot perform the requested operation.
+
+    Covers SQLite errors (corrupted database, disk full, permission
+    denied), validation failures (empty title, oversized code, etc.)
+    and import/export errors (malformed JSON).
+    """
