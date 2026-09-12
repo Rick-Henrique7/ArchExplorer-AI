@@ -33,13 +33,23 @@ def test_splitter_has_three_children(qapp) -> None:
 
 
 def test_panels_returned_in_left_to_right_order(qapp) -> None:
+    """The first two splitter children are the LeftPanel (explorer host) and
+    the code editor. The third child is the right-column container whose
+    currentWidget is the AI visualizer (explorer mode default)."""
     window = MainWindow()
     fe, ce, vz = window.panels()
-    # The first panel in the splitter should be the file explorer.
     splitter = window.splitter()
-    assert splitter.widget(0) is fe
+    # First child is the LeftPanel container (which hosts the explorer).
+    left_panel = window.left_panel()
+    assert splitter.widget(0) is left_panel
     assert splitter.widget(1) is ce
-    assert splitter.widget(2) is vz
+    # Third is a container; its currentWidget is the visualizer.
+    right_container = splitter.widget(2)
+    assert right_container is not None
+    # The visualizer is reachable through the right_stack inside.
+    assert window._right_stack.currentWidget() is vz
+    # And the explorer is reachable through the left_panel.
+    assert left_panel.explorer() is fe
 
 
 def test_file_explorer_file_selected_signal_exists(qapp) -> None:

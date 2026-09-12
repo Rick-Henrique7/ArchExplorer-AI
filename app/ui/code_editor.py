@@ -149,6 +149,34 @@ class CodeEditorPanel(QWidget):
         """True if the editor has unsaved changes vs the loaded file."""
         return self._editor.document().isModified()
 
+    def insert_text_at_cursor(self, text: str) -> bool:
+        """Insert ``text`` at the current cursor position.
+
+        Used by the catalog flow ("Inserir no editor") to paste a saved
+        snippet into the currently open file without overwriting it.
+        Returns ``False`` if no file is bound (anonymous editor) — the
+        caller should bounce the user back to the Explorer first.
+
+        The document is marked as modified so ``is_dirty()`` reports
+        ``True`` until the user saves (Ctrl+S). The cursor is moved to
+        the end of the inserted block.
+        """
+        if self._current_path is None:
+            return False
+        cursor = self._editor.textCursor()
+        cursor.insertText(text)
+        # Move cursor to the end of the inserted block so subsequent
+        # insertions continue right after this one (intuitive behavior
+        # when pasting multiple snippets in a row).
+        cursor.movePosition(
+            cursor.MoveOperation.EndOfBlock
+            if hasattr(cursor, "MoveOperation")
+            else 6  # QTextCursor.EndOfBlock (fallback if enum missing)
+        )
+        self._editor.setTextCursor(cursor)
+        self._editor.document().setModified(True)
+        return True
+
     # ----- Internal handlers -----------------------------------------------
 
     def _on_save_clicked(self) -> None:

@@ -38,12 +38,21 @@ _TAG_RE = re.compile(r"^[a-z0-9_.\-]{1,30}$")
 def default_catalog_path() -> Path:
     """Return the default catalog.db path for the current OS.
 
+    Also creates the parent directory (``~/Documents/ArchExplorer/``) so
+    the first run doesn't fail when the user hasn't navigated there
+    yet. The directory creation is idempotent and silent.
+
     - Windows: ``%USERPROFILE%/Documents/ArchExplorer/catalogo.db``
     - macOS / Linux: ``$HOME/Documents/ArchExplorer/catalogo.db``
     """
     home = Path(os.path.expanduser("~"))
     docs = home / "Documents"
-    return docs / "ArchExplorer" / "catalogo.db"
+    target_dir = docs / "ArchExplorer"
+    # Idempotent: exists_ok=True means no error if the directory is
+    # already there. ``parents=True`` covers the (rare) case where
+    # ``Documents`` itself does not exist yet on a brand-new profile.
+    target_dir.mkdir(parents=True, exist_ok=True)
+    return target_dir / "catalogo.db"
 
 
 def normalize_tags(raw_tags: list[str] | tuple[str, ...]) -> tuple[str, ...]:

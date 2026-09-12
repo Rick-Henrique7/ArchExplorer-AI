@@ -13,10 +13,10 @@
     <img src="https://img.shields.io/github/license/Rick-Henrique7/ArchExplorer-AI?style=for-the-badge" alt="License">
   </a>
   <a href="#testes">
-    <img src="https://img.shields.io/badge/tests-334%20passed-brightgreen?style=for-the-badge" alt="Tests">
+    <img src="https://img.shields.io/badge/tests-491%20passed-brightgreen?style=for-the-badge" alt="Tests">
   </a>
   <a href="#testes">
-    <img src="https://img.shields.io/badge/coverage-86%25-brightgreen?style=for-the-badge" alt="Coverage">
+    <img src="https://img.shields.io/badge/coverage-92%25-brightgreen?style=for-the-badge" alt="Coverage">
   </a>
   <a href="https://www.python.org/">
     <img src="https://img.shields.io/badge/python-3.10%E2%80%933.13-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python">
@@ -381,6 +381,27 @@ Após merge via PR, a pasta vai pra `changes/archive/` num commit
   estratégia de testes e padrões do pytest.
 - [`docs/guidelines/diretriz.md`](./docs/guidelines/diretriz.md) —
   princípios SOLID e de design aplicados.
+- [`docs/features/catalog.md`](./docs/features/catalog.md) —
+  tutorial do **Catálogo Pessoal** (Change 006): criar entries,
+  buscar, inserir no editor, backup do banco.
+
+---
+
+## Roadmap
+
+- [x] Cache de análises por arquivo
+- [x] Análise manual (botão dedicado) em vez de auto-trigger
+- [x] PT-BR forçado via system prompt
+- [x] Contraste de ícones no tema claro
+- [x] **Catálogo pessoal** (SQLite + FTS5, toggle Explorer/Catálogo, Ctrl+1/2)
+- [ ] Syntax highlight no editor (Pygments ou QsciScintilla)
+- [ ] Streaming de resposta da IA (mostra tokens chegando)
+- [ ] Persistência da posição dos splitters
+- [ ] Múltiplas abas de chat (uma por arquivo)
+- [ ] Export de análise (markdown standalone + Mermaid SVG)
+- [ ] Suporte a outros modelos (DeepSeek Coder, CodeLlama, etc.)
+- [ ] Botões de Importar/Exportar no Catálogo (Change 007)
+- [ ] Empacotamento `.exe` (PyInstaller + Inno Setup, Change 009)
 
 ---
 

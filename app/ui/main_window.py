@@ -1,7 +1,18 @@
-"""Main window — three horizontal panels + menu bar + Change 005 wiring."""
+"""Main window — three horizontal panels + menu bar + Change 005/006 wiring.
+
+Change 006 introduces a fourth concept: the catalog. The left column
+is now a :class:`LeftPanel` that stacks the file explorer and the
+catalog; switching is done via ``View > Painel esquerdo > Projeto /
+Catálogo`` (``Ctrl+1`` / ``Ctrl+2``).
+
+The right column shows EITHER the AI visualizer (explorer mode) OR
+the catalog preview (catalog mode). The choice is driven by the
+:class:`LeftPanel.mode_changed` signal.
+"""
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 from typing import Any
@@ -11,23 +22,31 @@ from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import (
     QDialog,
     QMainWindow,
+    QMessageBox,
     QSplitter,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from app.services import FileManager
+from app.services import CatalogoService, FileManager
 from app.ui.ai_edit_preview import AIEditPreviewDialog
 from app.ui.analysis_worker import AIEditWorker, AnalysisWorker, ChatWorker
+from app.ui.catalogo_panel import CatalogoPanel
 from app.ui.code_editor import CodeEditorPanel
+from app.ui.entry_editor_dialog import EntryEditorDialog
+from app.ui.entry_preview_panel import EntryPreviewPanel
 from app.ui.file_explorer import FileExplorerPanel
 from app.ui.file_inspector import inspect_file
+from app.ui.left_panel import LeftPanel, LeftPanelMode
 from app.ui.theme import Theme, ThemeManager
 from app.ui.visualizer import VisualizerPanel
 
 
 # QSettings keys (single source of truth for the registry layout).
 _SETTINGS_ROOT_DIR = "workspace/root_dir"
+_SETTINGS_LEFT_MODE = "workspace/left_panel_mode"
+_SETTINGS_CATALOG_DB = "catalog/db_path"
 
 
 def _content_hash(content: str) -> str:
@@ -36,7 +55,6 @@ def _content_hash(content: str) -> str:
     SHA-1 is used (not MD5) because it's in the stdlib and the content
     is already in memory — we just need a fast, deterministic key.
     """
-    import hashlib
     return hashlib.sha1(content.encode("utf-8")).hexdigest()
 
 
@@ -44,24 +62,21 @@ class MainWindow(QMainWindow):
     """ArchExplorer AI main window.
 
     Hosts three resizable panels in a horizontal ``QSplitter`` plus a
-    menu bar with the View > Theme switcher.
+    menu bar with View > Theme switcher and View > Painel esquerdo.
 
     Dependency injection:
-    - ``services`` (dict): expected key ``"ai_engine"``. Optional fallback.
+    - ``services`` (dict): expected key ``"ai_engine"`` and (Change 006)
+      ``"catalog_service"``. Either may be omitted for tests.
     - ``theme_manager``: optional; if provided, the View menu is built
       and the current theme is applied to incoming markdown renders.
     - ``file_manager``: optional; if provided, the explorer and editor
       share the same instance. A new one is created otherwise.
 
-    QSettings persistence (Change 005):
-    - The explorer's root directory is saved on every change and
-      restored on construction.
-
-    New signal wiring (Change 005):
-    - ``editor.save_failed`` -> ``visualizer.show_error``
-    - ``editor.ai_edit_requested`` -> :class:`AIEditWorker` + preview dialog
-    - ``visualizer.chat_requested`` -> :class:`ChatWorker` + add_chat_response
-    - ``explorer.root_changed`` -> QSettings persistence
+    QSettings persistence:
+    - The explorer's root directory is saved on every change (Change 005).
+    - The left-panel mode (explorer / catalog) is saved on every change
+      (Change 006).
+    - The catalog DB path is read from settings (Change 006 Bloco K).
     """
 
     WINDOW_TITLE: str = "ArchExplorer AI"
@@ -105,6 +120,9 @@ class MainWindow(QMainWindow):
         self._wire()
         if self._theme_manager is not None:
             self._build_menu()
+        # If the catalog was the last mode, restore it now.
+        if self._left_panel is not None and self._restored_mode is not None:
+            self._left_panel.show_mode(self._restored_mode)
 
     def _build_ui(self) -> None:
         self.setWindowTitle(self.WINDOW_TITLE)
@@ -118,18 +136,56 @@ class MainWindow(QMainWindow):
         else:
             initial_root = Path(os.getcwd())
 
+        # Restore last-used left-panel mode (default: explorer).
+        saved_mode_raw = settings.value(_SETTINGS_LEFT_MODE, "", type=str)
+        try:
+            initial_mode = LeftPanelMode(saved_mode_raw) if saved_mode_raw else LeftPanelMode.EXPLORER
+        except ValueError:
+            initial_mode = LeftPanelMode.EXPLORER
+        self._restored_mode = initial_mode
+
+        # Explorer + catalog stack inside a LeftPanel.
         self._file_explorer = FileExplorerPanel(
             root=initial_root, file_manager=self._file_manager, parent=self
         )
+        catalog_service = self._services.get("catalog_service")
+        if not isinstance(catalog_service, CatalogoService):
+            # Fall back to the default location; tests inject their own.
+            catalog_service = CatalogoService()
+        self._catalog_service = catalog_service
+        self._catalog_panel = CatalogoPanel(
+            catalogo_service=catalog_service, parent=self
+        )
+        self._left_panel = LeftPanel(
+            explorer=self._file_explorer,
+            catalog=self._catalog_panel,
+            initial_mode=initial_mode,
+            parent=self,
+        )
+
         self._code_editor = CodeEditorPanel(
             file_manager=self._file_manager, parent=self
         )
         self._visualizer = VisualizerPanel(self)
+        self._entry_preview = EntryPreviewPanel(
+            service=catalog_service, parent=self
+        )
+
+        # Right column: stack of (visualizer, entry_preview).
+        self._right_stack = QStackedWidget(self)
+        self._visualizer_index = self._right_stack.addWidget(self._visualizer)
+        self._entry_preview_index = self._right_stack.addWidget(self._entry_preview)
+        # Default: visualizer (explorer mode).
+        self._right_stack.setCurrentIndex(self._visualizer_index)
 
         self._splitter = QSplitter(Qt.Orientation.Horizontal, self)
-        self._splitter.addWidget(self._file_explorer)
+        self._splitter.addWidget(self._left_panel)
         self._splitter.addWidget(self._code_editor)
-        self._splitter.addWidget(self._visualizer)
+        self._right_stack_container = QWidget(self)
+        rs_layout = QVBoxLayout(self._right_stack_container)
+        rs_layout.setContentsMargins(0, 0, 0, 0)
+        rs_layout.addWidget(self._right_stack)
+        self._splitter.addWidget(self._right_stack_container)
         for i, stretch in enumerate(self.SPLITTER_STRETCH):
             self._splitter.setStretchFactor(i, stretch)
         self._splitter.setChildrenCollapsible(False)
@@ -140,11 +196,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._splitter)
         self.setCentralWidget(central)
 
-        # Tell the visualizer the active theme so its internal chat
+        # Tell the visualizer + preview the active theme so its internal
         # renders use the right body colors.
         if self._theme_manager is not None:
             effective_theme = self._theme_manager.effective().value
             self._visualizer.set_theme(effective_theme)
+            self._entry_preview.set_theme(effective_theme)
             # Recolor the file tree icons to match the theme — without
             # this, MDI icons stay white in light mode and disappear.
             self._file_explorer.apply_theme(effective_theme)
@@ -164,17 +221,53 @@ class MainWindow(QMainWindow):
         self._visualizer.analyze_requested.connect(self._on_analyze_requested)
         # Visualizer chat -> background worker -> add_chat_response.
         self._visualizer.chat_requested.connect(self._on_chat_requested)
+        # Left panel mode change -> QSettings + right column swap.
+        self._left_panel.mode_changed.connect(self._on_left_panel_mode_changed)
+        # Catalog panel signals -> MainWindow.
+        self._catalog_panel.entry_selected.connect(self._on_catalog_entry_selected)
+        self._catalog_panel.new_entry_requested.connect(self._on_catalog_new_entry)
+        self._catalog_panel.edit_entry_requested.connect(self._on_catalog_edit_entry)
+        self._catalog_panel.delete_entry_requested.connect(self._on_catalog_delete_entry)
+        self._catalog_panel.insert_into_editor_requested.connect(
+            self._on_catalog_insert_into_editor
+        )
+        # Entry preview signals -> MainWindow.
+        self._entry_preview.insert_into_editor.connect(
+            self._on_catalog_insert_into_editor
+        )
+        self._entry_preview.edit_entry.connect(self._on_catalog_edit_entry)
+        self._entry_preview.delete_entry.connect(self._on_catalog_delete_entry)
 
     def _build_menu(self) -> None:
-        """Build the menu bar with the View > Theme switcher."""
+        """Build the menu bar with View > Theme + View > Painel esquerdo."""
         menubar = self.menuBar()
         view_menu = menubar.addMenu("&View")
-        theme_menu = view_menu.addMenu("&Theme")
 
-        # Exclusive group so only one theme is selected at a time.
+        # --- Painel esquerdo submenu -------------------------------------
+        left_menu = view_menu.addMenu("&Painel esquerdo")
+        self._left_action_group = QActionGroup(self)
+        self._left_action_group.setExclusive(True)
+        self._left_actions: dict[LeftPanelMode, QAction] = {}
+        for mode in (LeftPanelMode.EXPLORER, LeftPanelMode.CATALOG):
+            label = "&Projeto" if mode == LeftPanelMode.EXPLORER else "Ca&tálogo"
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.setChecked(mode == self._left_panel.current_mode())
+            shortcut = "Ctrl+1" if mode == LeftPanelMode.EXPLORER else "Ctrl+2"
+            action.setShortcut(QKeySequence(shortcut))
+            action.triggered.connect(
+                lambda _checked=False, m=mode: self._on_left_menu_triggered(m)
+            )
+            self._left_action_group.addAction(action)
+            self._left_actions[mode] = action
+            left_menu.addAction(action)
+
+        view_menu.addSeparator()
+
+        # --- Theme submenu ------------------------------------------------
+        theme_menu = view_menu.addMenu("&Theme")
         self._theme_action_group = QActionGroup(self)
         self._theme_action_group.setExclusive(True)
-
         self._theme_actions: dict[Theme, QAction] = {}
         for theme in (Theme.DARK, Theme.LIGHT, Theme.SYSTEM):
             action = QAction(theme.value.title(), self)
@@ -200,6 +293,7 @@ class MainWindow(QMainWindow):
         self._theme_manager.apply(theme)
         effective = self._theme_manager.effective().value
         self._visualizer.set_theme(effective)
+        self._entry_preview.set_theme(effective)
         # Recolor the file tree icons — without this they stay white in
         # light mode and become invisible against the white background.
         self._file_explorer.apply_theme(effective)
@@ -213,11 +307,40 @@ class MainWindow(QMainWindow):
         self._theme_manager.cycle()
         effective = self._theme_manager.effective().value
         self._visualizer.set_theme(effective)
+        self._entry_preview.set_theme(effective)
         self._file_explorer.apply_theme(effective)
         for t, action in self._theme_actions.items():
             action.setChecked(t == self._theme_manager.current())
         if self._visualizer.last_markdown is not None:
             self._visualizer.show_markdown(self._visualizer.last_markdown, theme=effective)
+
+    # ----- Left panel / View > Painel esquerdo ----------------------------
+
+    @Slot(LeftPanelMode)
+    def _on_left_menu_triggered(self, mode: LeftPanelMode) -> None:
+        self._left_panel.show_mode(mode)
+
+    @Slot(str)
+    def _on_left_panel_mode_changed(self, mode_value: str) -> None:
+        """Switch the right column + persist the choice to QSettings."""
+        try:
+            mode = LeftPanelMode(mode_value)
+        except ValueError:
+            return
+        # Right column: visualizer for explorer mode, entry preview for
+        # catalog mode.
+        if mode == LeftPanelMode.EXPLORER:
+            self._right_stack.setCurrentIndex(self._visualizer_index)
+        else:
+            self._right_stack.setCurrentIndex(self._entry_preview_index)
+            # Whenever we land on the catalog, refresh the list so newly
+            # added entries (via the +Nova dialog) are visible.
+            self._catalog_panel.refresh()
+        QSettings().setValue(_SETTINGS_LEFT_MODE, mode_value)
+        # Update menu check-state (the menu only exists when a
+        # theme_manager was injected; use getattr defensively).
+        for m, action in getattr(self, "_left_actions", {}).items():
+            action.setChecked(m == mode)
 
     # ----- File selection ---------------------------------------------------
 
@@ -225,64 +348,42 @@ class MainWindow(QMainWindow):
     def _on_file_selected(self, path: str) -> None:
         """Handle a file click from the explorer.
 
-        Updated for hotfix: the AI is NO LONGER auto-invoked when the
-        user picks a file. The user must click the manual Analisar
-        button to trigger analysis. The flow now is:
+        Flow (no auto-analysis — Change 005 hotfix):
 
-        1. Validate the file (inspect_file) — bail early with an error if
-           extension/size/encoding reject it.
-        2. Update the code editor synchronously with the file content.
-        3. Bind the file context on the visualizer (so chat prompts can
-           reference it).
+        1. Validate the file (inspect_file) — bail early on error.
+        2. Update the code editor synchronously.
+        3. Bind the file context on the visualizer (chat prompts).
         4. Update the visualizer's file label + enable Analisar.
-        5. If the cache has a hit for this exact file content, render it
-           immediately. Otherwise show the idle state ("click Analisar").
+        5. Cache hit? Render immediately. Otherwise show idle.
         """
         theme = self._current_theme_name()
         result = inspect_file(path)
         if not result.ok:
             self._code_editor.clear()
-            # Drop any stale file context.
             self._visualizer.set_file_context(None, None)
             self._visualizer.set_current_file(None)
             self._visualizer.show_error(result.error_message, theme=theme)
             self._current_file = None
             return
 
-        # Synchronous UI update — editor always shows the file content
-        # even if the AI is not (yet) called. Pass the path + file_type
-        # so Save / Edit-with-AI are enabled and the AI engine knows
-        # the language.
         self._code_editor.set_content(
             result.content, path=path, file_type=result.file_type
         )
         self._visualizer.set_file_context(path, result.content)
         self._visualizer.set_current_file(path)
-        # Remember the open file so the manual Analisar button can read
-        # it without re-inspecting.
         self._current_file = (path, result.content, result.file_type)
 
-        # Cache lookup: if the exact content is cached, render it
-        # immediately and skip the AI call.
         content_hash = _content_hash(result.content)
         cached = self._analysis_cache.get(path)
         if cached is not None and cached[0] == content_hash:
             self._visualizer.show_cached(cached[1], theme=theme)
             return
 
-        # No cache hit — show the idle state and wait for the user to
-        # click Analisar.
         self._visualizer.show_idle(theme=theme)
 
     @Slot()
     def _on_analyze_requested(self) -> None:
-        """Handle the manual Analisar button.
-
-        Checks the cache first; if the file's content hash matches a
-        previous analysis, renders the cached result without calling
-        the AI. Otherwise spawns an :class:`AnalysisWorker` and shows
-        the loading state.
-        """
+        """Handle the manual Analisar button."""
         if self._current_file is None:
             return
         path, content, file_type = self._current_file
@@ -302,11 +403,7 @@ class MainWindow(QMainWindow):
             return
 
         self._visualizer.show_loading(Path(path).name, theme=theme)
-        # Mark the Analisar button as busy so the user cannot re-trigger
-        # while a worker is in flight.
         self._visualizer._set_analyze_busy(True)
-        # Stash the path + hash on the main window so the finished slot
-        # can write the result back into the cache.
         self._pending_analysis_path = path
         self._pending_analysis_hash = content_hash
         worker = AnalysisWorker(
@@ -316,9 +413,6 @@ class MainWindow(QMainWindow):
             file_label=Path(path).name,
         )
         worker.signals.finished.connect(self._on_analysis_finished)
-        # Direct connection to show_error (string -> string) and a
-        # separate slot to reset the Analisar button when the worker
-        # fails — show_error alone doesn't know the button exists.
         worker.signals.failed.connect(self._on_analysis_failed)
         QThreadPool.globalInstance().start(worker)
 
@@ -341,7 +435,6 @@ class MainWindow(QMainWindow):
 
     def _store_in_cache(self, path: str, content_hash: str, result: str) -> None:
         """LRU cache insert — drops the oldest entry past the cap."""
-        # Pop the path if already there so insertion order == recency.
         self._analysis_cache.pop(path, None)
         self._analysis_cache[path] = (content_hash, result)
         while len(self._analysis_cache) > self._ANALYSIS_CACHE_MAX:
@@ -367,13 +460,6 @@ class MainWindow(QMainWindow):
 
     @Slot(str, str)
     def _on_ai_edit_requested(self, path: str, instruction: str) -> None:
-        """Spawn an AIEditWorker; show a preview dialog on completion.
-
-        We snapshot the *current* editor content (so the user can keep
-        editing while the worker runs) and the original content for the
-        diff view. If the user clicks Apply, the new content is written
-        to disk and replaces the editor content.
-        """
         engine = self._services.get("ai_engine")
         if engine is None:
             self._visualizer.show_error(
@@ -382,13 +468,11 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # Snapshot the editor state before we kick off the worker.
         self._pending_edit_path = path
         self._pending_edit_original = self._code_editor.current_content()
         self._pending_edit_instruction = instruction
         file_type = self._code_editor.current_file_type() or "text"
 
-        # Show the loading state with the file name as the label.
         self._visualizer.show_loading(
             f"editing {Path(path).name}", theme=self._current_theme_name()
         )
@@ -423,14 +507,11 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         accepted = dlg.exec() == QDialog.Accepted
-        # Clear pending state immediately so concurrent edits don't get
-        # confused.
         self._pending_edit_path = None
         self._pending_edit_original = None
         self._pending_edit_instruction = None
 
         if not accepted:
-            # Show a friendly note in the visualizer.
             self._visualizer.show_idle(theme=self._current_theme_name())
             return
 
@@ -443,17 +524,12 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # Replace the editor content with the applied edit. set_content
-        # also clears the modified flag.
         self._code_editor.set_content(
             new_content,
             path=path,
             file_type=self._code_editor.current_file_type(),
         )
         self._visualizer.set_file_context(path, new_content)
-        # The file content just changed; the cached analysis (if any)
-        # is stale. Drop it and refresh the in-memory snapshot used by
-        # the Analisar button.
         self._analysis_cache.pop(path, None)
         self._current_file = (
             path, new_content, self._code_editor.current_file_type() or "text"
@@ -476,9 +552,6 @@ class MainWindow(QMainWindow):
             return
         prompt = self._visualizer.build_chat_prompt(user_msg)
         worker = ChatWorker(ai_engine=engine, prompt=prompt, user_msg=user_msg)
-        # Use a bound method (not a closure) so the slot survives across
-        # the thread boundary. The user_msg is stashed on the worker
-        # itself; the slot reads it back when it runs in the main thread.
         worker._user_msg = user_msg  # type: ignore[attr-defined]
         worker.signals.finished.connect(self._handle_chat_response)
         worker.signals.failed.connect(self._handle_chat_failure)
@@ -486,16 +559,6 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _handle_chat_response(self, response: str) -> None:
-        """Add the assistant reply to the most recent pending chat turn.
-
-        PySide6 does not let us pass the user_msg through the signal
-        payload (signals are typed and adding extra args is invasive),
-        so the worker stashes it on itself and we recover it here from
-        the thread pool's last-issued runnable. As a fallback we use the
-        most recent pending turn in the visualizer — there is only ever
-        one chat in flight at a time in this UI.
-        """
-        # Find the pending (no assistant) turn — they are added in order.
         for turn in reversed(self._visualizer.chat_history):
             if turn.assistant is None:
                 turn.assistant = response
@@ -505,6 +568,129 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def _handle_chat_failure(self, message: str) -> None:
         self._visualizer.show_error(message, theme=self._current_theme_name())
+
+    # ----- Catalog flows (Change 006) --------------------------------------
+
+    @Slot(int)
+    def _on_catalog_entry_selected(self, entry_id: int) -> None:
+        """Render the selected entry in the right column."""
+        self._entry_preview.show_entry_by_id(entry_id)
+
+    @Slot()
+    def _on_catalog_new_entry(self) -> None:
+        """Open the EntryEditorDialog in CREATE mode."""
+        dlg = EntryEditorDialog(mode=EntryEditorDialog.MODE_CREATE, parent=self)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        draft = dlg.get_draft()
+        if draft is None:
+            return
+        try:
+            entry = self._catalog_service.create_entry(
+                title=draft.title,
+                code=draft.code,
+                description=draft.description,
+                language=draft.language,
+                category=draft.category,
+                tags=list(draft.tags),
+                origin_path=draft.origin_path,
+                origin_line=draft.origin_line,
+                is_public=draft.is_public,
+            )
+        except Exception as exc:  # CatalogoError
+            QMessageBox.warning(
+                self, "Erro ao criar entrada", str(exc)
+            )
+            return
+        # Refresh the list and surface the new entry in the preview.
+        self._catalog_panel.refresh()
+        self._entry_preview.show_entry(entry)
+
+    @Slot(int)
+    def _on_catalog_edit_entry(self, entry_id: int) -> None:
+        """Open the EntryEditorDialog in EDIT mode and apply on accept."""
+        entry = self._catalog_service.get_entry(entry_id)
+        if entry is None:
+            QMessageBox.warning(
+                self, "Erro", f"Entrada {entry_id} não encontrada."
+            )
+            return
+        dlg = EntryEditorDialog(
+            mode=EntryEditorDialog.MODE_EDIT, entry=entry, parent=self
+        )
+        if dlg.exec() != QDialog.Accepted:
+            return
+        draft = dlg.get_draft()
+        if draft is None:
+            return
+        try:
+            updated = self._catalog_service.update_entry(
+                entry_id,
+                title=draft.title,
+                code=draft.code,
+                description=draft.description,
+                language=draft.language,
+                category=draft.category,
+                tags=list(draft.tags),
+                origin_path=draft.origin_path,
+                origin_line=draft.origin_line,
+                is_public=draft.is_public,
+            )
+        except Exception as exc:
+            QMessageBox.warning(
+                self, "Erro ao atualizar", str(exc)
+            )
+            return
+        self._catalog_panel.refresh()
+        self._entry_preview.show_entry(updated)
+
+    @Slot(int)
+    def _on_catalog_delete_entry(self, entry_id: int) -> None:
+        """Confirm + delete the entry."""
+        entry = self._catalog_service.get_entry(entry_id)
+        title = entry.title if entry is not None else f"#{entry_id}"
+        confirmed = QMessageBox.question(
+            self,
+            "Excluir entrada",
+            f"Tem certeza que deseja excluir “{title}”? Esta ação é "
+            "permanente e remove a entrada do banco local.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self._catalog_service.delete_entry(entry_id)
+        except Exception as exc:
+            QMessageBox.warning(
+                self, "Erro ao excluir", str(exc)
+            )
+            return
+        self._catalog_panel.refresh()
+        self._entry_preview.clear()
+
+    @Slot(int)
+    def _on_catalog_insert_into_editor(self, entry_id: int) -> None:
+        """Insert the entry's code into the open editor + bounce to explorer."""
+        entry = self._catalog_service.get_entry(entry_id)
+        if entry is None:
+            QMessageBox.warning(
+                self, "Erro", f"Entrada {entry_id} não encontrada."
+            )
+            return
+        # If no file is open, just inform the user (insert_text_at_cursor
+        # returns False in that case, but we want a clearer message).
+        if self._code_editor.current_path() is None:
+            QMessageBox.information(
+                self,
+                "Nenhum arquivo aberto",
+                "Abra um arquivo no Explorer antes de inserir um snippet.",
+            )
+            return
+        self._code_editor.insert_text_at_cursor(entry.code)
+        # Switch back to the explorer so the user can see what was
+        # inserted (catalog mode hides the editor's content focus).
+        self._left_panel.show_explorer()
 
     # ----- Helpers ----------------------------------------------------------
 
@@ -518,8 +704,25 @@ class MainWindow(QMainWindow):
     def panels(
         self,
     ) -> tuple[FileExplorerPanel, CodeEditorPanel, VisualizerPanel]:
-        """Return the three panels in left-to-right order."""
+        """Return the three panels in left-to-right order.
+
+        Kept for back-compat with tests that pre-date the LeftPanel
+        refactor. The catalog panel and entry preview are reachable
+        via :meth:`left_panel` / :meth:`entry_preview`.
+        """
         return (self._file_explorer, self._code_editor, self._visualizer)
+
+    def left_panel(self) -> LeftPanel:
+        """Return the LeftPanel container (explorer + catalog stack)."""
+        return self._left_panel
+
+    def catalog_panel(self) -> CatalogoPanel:
+        """Return the catalog list panel."""
+        return self._catalog_panel
+
+    def entry_preview(self) -> EntryPreviewPanel:
+        """Return the entry preview panel."""
+        return self._entry_preview
 
     def splitter(self) -> QSplitter:
         """Return the horizontal splitter hosting the three panels."""

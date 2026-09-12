@@ -314,3 +314,104 @@ Default: `os.getcwd()` se nunca foi setado. Se a pasta não existir mais
 | `F5` | Refresh | FileExplorerPanel |
 | `Ctrl+Shift+T` | Toggle theme | MainWindow (do Change 004) |
 | `Enter` (no chat) | Send message | VisualizerPanel |
+| `Ctrl+1` | Painel esquerdo → Projeto (Explorer) | MainWindow (Change 006) |
+| `Ctrl+2` | Painel esquerdo → Catálogo | MainWindow (Change 006) |
+
+---
+
+## 7. Catálogo Pessoal (Change 006)
+
+A coluna esquerda deixou de ser exclusivamente o explorador de arquivos.
+Agora ela hospeda um `QStackedWidget` (`LeftPanel`) que alterna entre o
+`FileExplorerPanel` e o `CatalogoPanel` (catálogo pessoal).
+
+### 7.1. Toggle Explorer ↔ Catálogo
+
+- `View > Painel esquerdo > Projeto` (`Ctrl+1`) — modo padrão.
+- `View > Painel esquerdo > Catálogo` (`Ctrl+2`) — modo catálogo.
+- O estado é persistido em `QSettings` (`workspace/left_panel_mode`) e
+  restaurado na próxima abertura.
+- Como o `QStackedWidget` mantém ambos os widgets vivos, a troca
+  preserva o scroll, a busca em andamento e a seleção atual em cada um.
+
+### 7.2. Layout no modo Catálogo
+
+```text
++---------------------+-----------------------+----------------------------+
+|  Col. 1: Catálogo   |    Col. 2: Editor     |   Col. 3: Preview          |
+|   (CatalogoPanel)   |     (CodeEditor)      |   (EntryPreviewPanel)      |
+|                     |                       |                            |
+| [buscar] [cat] [lng]| (arquivo aberto, se   | # Título                   |
+| +Nova Editar Excluir|  houver)              | | Campo | Valor |           |
+| Inserir no editor   |                       | ```python                  |
+| ------------------- |                       | codigo aqui                |
+| ▸ LRU cache         |                       | ```                        |
+| ▸ Memoization       |                       |                            |
+| ▸ Quick sort        |                       |                            |
++---------------------+-----------------------+----------------------------+
+```
+
+A coluna central (CodeEditor) continua a mesma — o usuário pode estar
+navegando no catálogo enquanto mantém um arquivo aberto. A coluna
+direita troca para o `EntryPreviewPanel`, que renderiza o entry
+selecionado via o mesmo `build_html_template` usado pelo visualizador
+(markdown + Mermaid).
+
+### 7.3. Componentes novos
+
+| Arquivo | Classe | Responsabilidade |
+|---|---|---|
+| `app/ui/left_panel.py` | `LeftPanel` | `QStackedWidget` que troca Explorer/Catálogo; emite `mode_changed` |
+| `app/ui/catalogo_panel.py` | `CatalogoPanel` + `CatalogoListModel` | Busca (debounce 200ms), filtros categoria/linguagem, lista, botões |
+| `app/ui/entry_editor_dialog.py` | `EntryEditorDialog` | Form de criação/edição com validação; retorna `EntryDraft` |
+| `app/ui/entry_preview_panel.py` | `EntryPreviewPanel` | Render markdown + botões (Inserir/Editar/Excluir) |
+
+### 7.4. Fluxos do Catálogo
+
+#### Criar (`+Nova`)
+1. `CatalogoPanel.new_entry_requested` → `MainWindow._on_catalog_new_entry`.
+2. Abre `EntryEditorDialog(mode=CREATE)`.
+3. No `accept()`, valida e captura `EntryDraft`.
+4. `MainWindow` chama `CatalogoService.create_entry`.
+5. `refresh()` da lista; preview mostra a nova entry.
+
+#### Editar (`Editar` ou botão na preview)
+1. `edit_entry_requested(entry_id)` → carrega `Entry`, abre `EntryEditorDialog(mode=EDIT)`.
+2. No `accept()`, `CatalogoService.update_entry`.
+3. Refresh + preview atualizada.
+
+#### Excluir (`Excluir`)
+1. Confirmação via `QMessageBox.question`.
+2. `CatalogoService.delete_entry`; refresh + preview limpa.
+
+#### Inserir no editor (`Inserir no editor`)
+1. Se não há arquivo aberto, exibe `QMessageBox.information` (sem falha silenciosa).
+2. `CodeEditorPanel.insert_text_at_cursor(code)` cola na posição do cursor; marca dirty.
+3. Volta automaticamente para o modo Explorer para o usuário ver o que foi inserido.
+
+### 7.5. Atalhos adicionais
+
+| Atalho | Ação |
+|---|---|
+| `Ctrl+1` | Trocar para Explorer |
+| `Ctrl+2` | Trocar para Catálogo |
+| `Ctrl+S` | Salvar arquivo (continua valendo) |
+
+### 7.6. Persistência
+
+- Modo (Explorer/Catálogo): `workspace/left_panel_mode` em QSettings.
+- Path do DB do catálogo (opcional): `catalog/db_path` em QSettings.
+- Precedência de path: CLI `--catalog-db` > env `ARCHEXPLORER_CATALOG_DB` > QSettings > default (`~/Documents/ArchExplorer/catalogo.db`).
+- Backup automático `catalogo.db.bak` quando o banco existente falha ao abrir (corrompido); o app segue com um DB novo e loga via `CatalogoError`.
+
+### 7.7. Sinal consolidado
+
+| Origem | Signal | Payload | Conectado em |
+|---|---|---|---|
+| `LeftPanel` | `mode_changed` | `str` (`"explorer"` \| `"catalog"`) | `MainWindow` → swap da coluna direita + QSettings |
+| `CatalogoPanel` | `entry_selected` | `int` | `MainWindow` → `EntryPreviewPanel.show_entry_by_id` |
+| `CatalogoPanel` | `new_entry_requested` | (sem payload) | `MainWindow` → abre `EntryEditorDialog(CREATE)` |
+| `CatalogoPanel` | `edit_entry_requested` | `int` | `MainWindow` → abre `EntryEditorDialog(EDIT)` |
+| `CatalogoPanel` | `delete_entry_requested` | `int` | `MainWindow` → confirma + `delete_entry` |
+| `CatalogoPanel` | `insert_into_editor_requested` | `int` | `MainWindow` → `insert_text_at_cursor` + volta p/ Explorer |
+| `EntryPreviewPanel` | `insert_into_editor` / `edit_entry` / `delete_entry` | `int` | `MainWindow` (mesmos slots acima) |

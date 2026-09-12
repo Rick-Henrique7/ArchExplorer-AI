@@ -580,6 +580,99 @@ schema de "uma chave de string" seria over-engineering.
 
 ---
 
+## Banco do Catálogo: SQLite raw + FTS5 (sem ORM) — Change 006
+
+### Decisão
+
+O catálogo pessoal usa **SQLite raw via `sqlite3` stdlib**, com **FTS5**
+para busca. Sem SQLAlchemy, sem SQLModel, sem Peewee.
+
+### Por que SQLite (e não JSON em disco)
+
+Tentamos o padrão "uma entry = um JSON em `~/.config/.../entries/`" e
+matamos a ideia em três dias:
+
+- **Busca**: a busca por substring vira `os.walk` + `json.load` + `if
+  query in title`. Em 500 entries já é perceptível; em 10k é inviável.
+- **Tags**: filtrar por tag exigiria ler todos os JSONs e filtrar em
+  Python. Mesma lentidão.
+- **Concorrência**: dois processos abrindo o mesmo JSON e gravando ao
+  mesmo tempo = arquivo corrompido. SQLite tem `BEGIN IMMEDIATE` e
+  locking nativo.
+
+### Por que **FTS5** e não `LIKE '%term%'`
+
+- LIKE sem prefixo (`%term%`) é **full table scan** — não usa índice.
+- Em catálogos de 10k+ entries, FTS5 é ~100× mais rápido no `MATCH`.
+- Bônus: BM25 nativo (ranking por relevância, não por ordem de
+  inserção).
+- O unicode61 tokenizer já remove acentos (`remove_diacritics 2`),
+  então buscar "nao" casa "não".
+
+### Por que **raw `sqlite3`** e não SQLAlchemy/SQLModel
+
+- Schema é **3 tabelas + 1 virtual**: `entries`, `tags`, `entry_tags`,
+  `entries_fts`. Cabe na cabeça de qualquer dev em 30 segundos.
+- **FTS5 + triggers + `content='entries'`** (FTS5 contentless mode)
+  é mal-suportado por ORMs — SQLAlchemy exige hacks com `text()` e
+  eventos.
+- **Triggers** (`entries_ai/ad/au`) mantêm `entries_fts` em sync com
+  `entries`. ORM esconde ou dificulta isso.
+- **`Cursor.lastrowid` é sticky** após `INSERT OR IGNORE` — temos que
+  re-SELECT pelo nome. ORM normalmente esconde isso e nos protegeria,
+  mas no FTS5 queremos o controle fino do `INSERT OR IGNORE INTO
+  tags (name) VALUES (?)` + re-SELECT.
+- **Zero dependências extras** — `sqlite3` é stdlib desde o Python 2.5.
+- **Migration**: 1 tabela `_migrations (version INTEGER PRIMARY KEY)`
+  e `INSERT OR IGNORE INTO _migrations VALUES (1, datetime('now'))`.
+  Não precisamos de Alembic pra uma única migration que só cria tabelas.
+
+Custo: ~200 linhas de SQL no schema + helpers de validação. Aceitável.
+
+### Anti-decisão registrada
+
+> ❌ **SQLAlchemy ou SQLModel**
+
+ORMs matam a vantagem do FTS5 (que é o motivo principal de usar SQLite
+em vez de JSON). O ponto de usar SQLite aqui é justamente escrever SQL
+direto. SQLAlchemy adicionaria uma camada de abstração que não compra
+nada neste schema simples.
+
+### Gotcha que virou teste de regressão
+
+`Cursor.lastrowid` é **sticky**: após `INSERT OR IGNORE INTO tags (name)
+VALUES (?)`, `cur.lastrowid` ainda retorna o id do *último insert
+bem-sucedido* na mesma conexão, não o da nossa tentativa. Resultado:
+se a tag já existia, `lastrowid` retorna o id da tag *anterior*, e a
+associação `entry_tags` fica errada. Solução: sempre re-SELECT depois
+do upsert:
+
+```python
+conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (name,))
+row = conn.execute("SELECT id FROM tags WHERE name = ?", (name,)).fetchone()
+tag_id = row["id"]
+```
+
+Cobertura: `tests/unit/test_catalogo_service.py` valida que criar duas
+entries com a mesma tag não duplica `entry_tags`.
+
+### Backup automático de DB corrompido
+
+Em vez de explodir com `DatabaseError`, o `_init_schema` renomeia o
+arquivo existente para `*.bak` e segue com um DB novo:
+
+```python
+except sqlite3.DatabaseError as exc:
+    backup = self._db_path.with_suffix(".db.bak")
+    self._db_path.rename(backup)
+    # ... cria DB novo e raise CatalogoError com backup=<caminho>
+```
+
+O usuário recebe um `CatalogoError` com `path`, `backup` e `cause` —
+informação suficiente pra recuperar manualmente se precisar.
+
+---
+
 ## Resumo: tech radar
 
 | Categoria   | Adotado                          | Rejeitado                          |
