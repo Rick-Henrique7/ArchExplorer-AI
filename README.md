@@ -105,6 +105,14 @@ A interface imita o layout de um IDE clássico:
   no Windows).
 - 🎨 **Tema dark/light/system** com `Ctrl+Shift+T` para alternar; todos
   os ícones e o markdown seguem o tema.
+- 📚 **Catálogo pessoal** (`Ctrl+2`) — um "second brain" local em SQLite
+  com busca FTS5, onde você guarda soluções, padrões e snippets. O
+  catálogo **substitui** o Explorer na coluna esquerda (toggle via
+  `View > Painel esquerdo > Projeto/Catálogo`). Cada entry tem título,
+  descrição em markdown, código, tags, categoria e origem (caminho:linha).
+  O botão **Inserir no editor** cola o snippet no cursor do arquivo
+  aberto. Tudo persiste em `~/Documents/ArchExplorer/catalogo.db` —
+  sem servidor, sem cloud.
 
 ### O que ele **não** faz (e por quê)
 
@@ -135,10 +143,21 @@ A interface imita o layout de um IDE clássico:
   │    [+Pasta]     │          │  │ Salvar    │  │         │  │   (markdown render)            │
   │    [Atualizar]  │          │  │ Edit c/IA │  │         │  └─ Chat input + histórico       │
   │    [Sel. Pasta] │          │  └───────────┘  │         │      (PT-BR · LRU 50)           │
-  └─────────────────┘          └─────────────────┘         │                                  │
-           │                              │                │  + Cache (LRU 32, SHA-1 key)    │
-           │                              │                │  + QSettings (root persistence) │
-           │                              │                └──────────────┬───────────────────┘
+  │                 │          │                 │         │                                  │
+  │  LeftPanel ─────┼── toggle │                  │         │                                  │
+  │  ┌────────────┐ │  Ctrl+1  │                  │         │  + Cache (LRU 32, SHA-1 key)    │
+  │  │ EXPLORER   │◀┼─────────┤                  │         │  + QSettings (root persistence) │
+  │  └────────────┘ │  Ctrl+2  │                  │         └──────────────┬───────────────────┘
+  │  ┌────────────┐◀┼─────────┘                  │                        │ signals (cross-thread)
+  │  │ CATÁLOGO   │ │           │                  │                        │ │
+  │  │ (+Nova,    │ │           │                  │                        │ │
+  │  │  Editar,   │ │           │                  │                        │ │
+  │  │  Inserir)  │ │           │                  │                        │ │
+  │  └────────────┘ │           │                  │                        │ │
+  └─────────────────┘           └─────────────────┘                          │ │
+           │                              │                                   │ │
+           │                              │                                   │ │
+           ▼                              ▼                                   ▼ │
            │                              │                               │
            ▼                              ▼                               │ signals (cross-thread)
   ┌──────────────────────────────────────────────────────────────────────┐ │
@@ -164,6 +183,17 @@ A interface imita o layout de um IDE clássico:
   │                      │  (HTTP client) │                              │ │
   │                      │  timeout 300s  │                              │ │
   │                      └────────┬───────┘                              │ │
+  │                               │                                      │ │
+  │  ┌────────────────────────────┼─────────────────────────────────────┐ │ │
+  │  │  CatalogoService (SQLite + FTS5)                                  │ │ │
+  │  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐      │ │ │
+  │  │  │  entries   │ │    tags    │ │ entry_tags │ │ entries_fts│      │ │ │
+  │  │  │            │ │            │ │            │ │ (triggers) │      │ │ │
+  │  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘      │ │ │
+  │  │  CRUD + list_entries + search_entries (FTS5 prefix `*`)          │ │ │
+  │  │  export_json / import_json · backup *.bak on corruption           │ │ │
+  │  │  ~/Documents/ArchExplorer/catalogo.db                             │ │ │
+  │  └───────────────────────────────────────────────────────────────────┘ │ │
   └───────────────────────────────┼──────────────────────────────────────┘ │
                                   │ QRunnable / QThreadPool              │
                                   ▼                                       │
@@ -308,26 +338,41 @@ python -m pytest tests/unit --cov=app
 python -m pytest tests/unit/test_ai_engine.py -v
 ```
 
-**Estado atual:** `334 passed, 2 skipped` (os 2 skipped são testes
+**Estado atual:** `491 passed, 2 skipped` (os 2 skipped são testes
 live que precisam do Ollama rodando).
 
-**Cobertura:** 86% global, com 100% nos workers e nos dialogs.
+**Cobertura:** 92% global, com 100% nos modelos e nos workers.
 
 ```
 Name                                Stmts   Miss  Cover
 -------------------------------------------------------
-app\ui\analysis_worker.py              57      0   100%
+app\__init__.py                         1      0   100%
+app\services\__init__.py                7      0   100%
+app\services\models.py                 26      0   100%
+app\ui\__init__.py                      0      0   100%
+app\utils\__init__.py                   0      0   100%
 app\ui\ai_edit_preview.py              46      0   100%
-app\ui\code_editor.py                  86      1    99%
-app\services\ai_engine.py              71      1    99%
+app\ui\analysis_worker.py              57      0   100%
+app\ui\code_editor.py                  97      0   100%
+app\ui\html_template.py                18      0   100%
+app\ui\icons.py                        45      0   100%
+app\ui\left_panel.py                   49      0   100%
+app\services\ai_engine.py              72      1    99%
+app\ui\entry_preview_panel.py         124      1    99%
 app\services\diagram_generator.py      41      1    98%
-app\ui\file_explorer.py               114      8    93%
-app\ui\visualizer.py                  192     16    92%
-app\ui\theme.py                        65      7    89%
+app\ui\entry_editor_dialog.py         164      7    96%
+app\ui\visualizer.py                  225     10    96%
+app\services\exceptions.py             18      1    94%
+app\ui\catalogo_panel.py              223     16    93%
+app\ui\file_explorer.py               120      9    92%
 app\ui\file_inspector.py               36      4    89%
+app\ui\theme.py                        65      7    89%
+app\services\catalog_service.py       259     34    87%
 app\services\file_manager.py          138     18    87%
+app\ui\main_window.py                 405     58    86%
+app\main.py                            54     17    69%
 -------------------------------------------------------
-TOTAL                                1163    166    86%
+TOTAL                                2290    184    92%
 ```
 
 ---
@@ -361,7 +406,7 @@ Após merge via PR, a pasta vai pra `changes/archive/` num commit
 | [003](./changes/archive/003-ui-integration-rendering) | Integração UI + render markdown/Mermaid | ✅ shipped |
 | [004](./changes/archive/004-icons-and-theme) | Ícones MDI + dark/light/system | ✅ shipped |
 | [005](./changes/archive/005-interactive-features) | Chat, Salvar, Editar com IA, toolbar, padding | ✅ shipped |
-| 006+   | (em planejamento — cache de análises, system prompt PT-BR, analise manual, etc.) | 🔄 próximo |
+| [006](./changes/archive/006-personal-catalog) | **Catálogo Pessoal** — SQLite + FTS5, toggle Explorer/Catálogo (Ctrl+1/2), CRUD, busca, inserir no editor | ✅ shipped |
 
 ---
 
@@ -402,21 +447,6 @@ Após merge via PR, a pasta vai pra `changes/archive/` num commit
 - [ ] Suporte a outros modelos (DeepSeek Coder, CodeLlama, etc.)
 - [ ] Botões de Importar/Exportar no Catálogo (Change 007)
 - [ ] Empacotamento `.exe` (PyInstaller + Inno Setup, Change 009)
-
----
-
-## Roadmap
-
-- [x] Cache de análises por arquivo
-- [x] Análise manual (botão dedicado) em vez de auto-trigger
-- [x] PT-BR forçado via system prompt
-- [x] Contraste de ícones no tema claro
-- [ ] Syntax highlight no editor (Pygments ou QsciScintilla)
-- [ ] Streaming de resposta da IA (mostra tokens chegando)
-- [ ] Persistência da posição dos splitters
-- [ ] Múltiplas abas de chat (uma por arquivo)
-- [ ] Export de análise (markdown standalone + Mermaid SVG)
-- [ ] Suporte a outros modelos (DeepSeek Coder, CodeLlama, etc.)
 
 ---
 
