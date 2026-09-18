@@ -48,6 +48,7 @@ from app.services.lps_models import (
 )
 from app.services.lps_service import LpsService
 from app.services.models import Entry, Tag
+from app.services.template_engine import TemplateEngine
 from app.services.variability_solver import (
     EncodedModel,
     ValidationResult,
@@ -89,6 +90,7 @@ __all__ = [
     "ProductRun",
     "SYSTEM_PROMPT",
     "Tag",
+    "TemplateEngine",
     "ValidationResult",
     "VariabilitySolver",
     "default_catalog_path",

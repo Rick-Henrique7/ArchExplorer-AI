@@ -1,0 +1,25 @@
+{# docker_compose.yml.j2 — base compose file for a generated service #}
+services:
+  {{ component.name | lower | replace(' ', '-') }}:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: {{ component.name | lower | replace(' ', '-') }}
+    restart: unless-stopped
+    ports:
+{%- if component.metadata.get('ports') %}
+{%- for p in component.metadata.ports %}
+      - "{{ p }}"
+{%- endfor %}
+{%- else %}
+      - "8000:8000"  # default FastAPI port
+{%- endif %}
+    environment:
+      - LOG_LEVEL=info
+    volumes:
+      - .:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
