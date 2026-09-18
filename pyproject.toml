@@ -28,6 +28,9 @@ dependencies = [
     "PySide6>=6.8,<7",
     "qtawesome>=1.3",
     "requests>=2.32",
+    "python-sat",  # SAT solver (a.k.a. pysat) for the LPS variability engine (Change 007)
+    "Jinja2>=3.1",  # sandboxed template engine for product generation (Change 007)
+    "pydantic>=2.5",  # DSL validation for the feature model JSON (Change 007)
 ]
 
 [project.optional-dependencies]
@@ -38,6 +41,12 @@ dev = [
     "pytest-cov>=5",
     "pytest-mock>=3.14",
     "requests-mock>=1.12",
+]
+# Optional LLM dependencies (Change 007): installs LiteLLM, a fat
+# client library that unifies OpenAI/Anthropic/Gemini/Ollama/Cohere.
+# Install with: pip install arch-explorer-ai[llm]
+llm = [
+    "litellm>=1.40",
 ]
 
 [project.urls]

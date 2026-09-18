@@ -48,3 +48,34 @@ class CatalogoError(ArchExplorerError):
     denied), validation failures (empty title, oversized code, etc.)
     and import/export errors (malformed JSON).
     """
+
+
+class LpsSpecError(ArchExplorerError):
+    """Raised when a feature model JSON does not match the LPS DSL (Contrato 1).
+
+    The context dict carries the JSON Pointer path of the offending
+    field (e.g. ``"/nodes/3/variability"``) so the UI can highlight the
+    specific row in the inspector.
+    """
+
+
+class LpsValidationError(ArchExplorerError):
+    """Raised when a feature model selection violates SAT constraints.
+
+    The context carries the conflicting node ids (when the solver
+    can isolate them) so the UI can draw the bad edges in red.
+    """
+
+
+class LlmToolError(ArchExplorerError):
+    """Raised when a LLM Tool Use invocation is rejected or fails.
+
+    The ``reason`` field (in the context dict) is one of:
+    - ``path_traversal``  — agent tried to escape the workspace
+    - ``invalid_chars``   — path contains forbidden characters
+    - ``file_too_large``  — content exceeds the 1 MB cap
+    - ``file_not_found``  — read_file on a missing path
+    - ``not_a_directory`` — list_directory on a non-dir
+    - ``unknown_tool``    — IA invoked a tool that doesn't exist
+    - ``tool_failed``     — tool raised an unexpected exception
+    """

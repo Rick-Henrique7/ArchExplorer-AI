@@ -1,4 +1,4 @@
-"""Services layer — file management, AI engine, diagram generation.
+"""Services layer — file management, AI engine, diagram generation, LPS.
 
 The services layer is the application's business logic. It is isolated
 from the UI (see ``app/ui/``) and the engine layer (concrete HTTP clients,
@@ -28,6 +28,9 @@ from app.services.exceptions import (
     CatalogoError,
     DiagramParsingError,
     FileOperationError,
+    LlmToolError,
+    LpsSpecError,
+    LpsValidationError,
 )
 from app.services.file_manager import (
     ClipboardMode,
@@ -35,7 +38,21 @@ from app.services.file_manager import (
     FileItem,
     FileManager,
 )
+from app.services.lps_models import (
+    FeatureEdge,
+    FeatureGroup,
+    FeatureModel,
+    FeatureNode,
+    LpsComponent,
+    ProductRun,
+)
+from app.services.lps_service import LpsService
 from app.services.models import Entry, Tag
+from app.services.variability_solver import (
+    EncodedModel,
+    ValidationResult,
+    VariabilitySolver,
+)
 
 __all__ = [
     "AIEngine",
@@ -49,18 +66,31 @@ __all__ = [
     "ClipboardState",
     "DiagramParsingError",
     "EDIT_FILE_PROMPT",
+    "EncodedModel",
     "Entry",
     "EXTRACT_UML_STRUCTURE_PROMPT",
+    "FeatureEdge",
+    "FeatureGroup",
+    "FeatureModel",
+    "FeatureNode",
     "FileItem",
     "FileManager",
     "FileOperationError",
     "GENERATE_COMPONENT_PROMPT",
     "IAIProvider",
+    "LlmToolError",
+    "LpsComponent",
+    "LpsService",
+    "LpsSpecError",
+    "LpsValidationError",
     "MermaidRenderer",
     "MockAIProvider",
     "OllamaProvider",
+    "ProductRun",
     "SYSTEM_PROMPT",
     "Tag",
+    "ValidationResult",
+    "VariabilitySolver",
     "default_catalog_path",
     "normalize_tags",
 ]
