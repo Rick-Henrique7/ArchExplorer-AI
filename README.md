@@ -445,7 +445,10 @@ Após merge via PR, a pasta vai pra `changes/archive/` num commit
 - [ ] Múltiplas abas de chat (uma por arquivo)
 - [ ] Export de análise (markdown standalone + Mermaid SVG)
 - [ ] Suporte a outros modelos (DeepSeek Coder, CodeLlama, etc.)
-- [ ] Botões de Importar/Exportar no Catálogo (Change 007)
+- [ ] Botões de Importar/Exportar no Catálogo (Change 008)
+- [ ] **Módulo LPS / SPL** — feature modeling, drag-and-drop canvas,
+      SAT solver (pysat), Jinja2 templates, multi-provider LLM com
+      Tool Use seguro (Change 007)
 - [ ] Empacotamento `.exe` (PyInstaller + Inno Setup, Change 009)
 
 ---
