@@ -47,6 +47,10 @@ from app.services.lps_models import (
     ProductRun,
 )
 from app.services.lps_service import LpsService
+from app.services.lps_components_seed import (
+    list_starter_uuids,
+    seed_default_components,
+)
 from app.services.models import Entry, Tag
 from app.services.template_engine import TemplateEngine
 from app.services.variability_solver import (
@@ -94,5 +98,7 @@ __all__ = [
     "ValidationResult",
     "VariabilitySolver",
     "default_catalog_path",
+    "list_starter_uuids",
     "normalize_tags",
+    "seed_default_components",
 ]

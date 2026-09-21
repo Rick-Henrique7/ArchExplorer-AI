@@ -467,16 +467,133 @@ class LpsService:
             rows = conn.execute(sql, params).fetchall()
         return [self._row_to_run(r) for r in rows if r is not None]
 
+    def latest_run(self, feature_model_id: str) -> ProductRun | None:
+        """The most recent run for ``feature_model_id``, or ``None``.
+
+        Convenience over ``list_runs(feature_model_id=..., limit=1)[0]``
+        that doesn't surface an IndexError when no run exists yet.
+        """
+        runs = self.list_runs(feature_model_id=feature_model_id, limit=1)
+        return runs[0] if runs else None
+
+    # ----- Aggregates / introspection -------------------------------------
+
+    def stats(self) -> dict[str, Any]:
+        """Aggregate stats across the LPS tables.
+
+        Shape:
+        - ``components_total`` / ``components_by_category``
+        - ``feature_models_total`` / ``feature_models_by_status``
+        - ``runs_total`` / ``runs_by_status``
+        - ``runs_total_files`` (sum of ``file_count`` over SUCCESS runs)
+
+        Cheap aggregate queries — safe to call from the inspector on
+        every refresh.
+        """
+        with self._connect() as conn:
+            components_total = conn.execute(
+                "SELECT COUNT(*) AS c FROM lps_components"
+            ).fetchone()["c"]
+            components_by_category = {
+                row["category"]: row["c"]
+                for row in conn.execute(
+                    "SELECT category, COUNT(*) AS c FROM lps_components "
+                    "GROUP BY category ORDER BY c DESC"
+                ).fetchall()
+            }
+            models_total = conn.execute(
+                "SELECT COUNT(*) AS c FROM lps_feature_models"
+            ).fetchone()["c"]
+            models_by_status = {
+                row["validation_status"]: row["c"]
+                for row in conn.execute(
+                    "SELECT validation_status, COUNT(*) AS c FROM lps_feature_models "
+                    "GROUP BY validation_status ORDER BY c DESC"
+                ).fetchall()
+            }
+            runs_total = conn.execute(
+                "SELECT COUNT(*) AS c FROM lps_product_runs"
+            ).fetchone()["c"]
+            runs_by_status = {
+                row["status"]: row["c"]
+                for row in conn.execute(
+                    "SELECT status, COUNT(*) AS c FROM lps_product_runs "
+                    "GROUP BY status ORDER BY c DESC"
+                ).fetchall()
+            }
+            runs_total_files = conn.execute(
+                "SELECT COALESCE(SUM(file_count), 0) AS s FROM lps_product_runs "
+                "WHERE status = 'SUCCESS'"
+            ).fetchone()["s"]
+        return {
+            "components_total": components_total,
+            "components_by_category": components_by_category,
+            "feature_models_total": models_total,
+            "feature_models_by_status": models_by_status,
+            "runs_total": runs_total,
+            "runs_by_status": runs_by_status,
+            "runs_total_files": runs_total_files,
+        }
+
+    # ----- Catalog bridge (Change 006 ↔ 007) -----------------------------
+
+    def create_component_from_catalog(
+        self,
+        catalog_entry: Any,
+        *,
+        category: str = "service",
+        jinja_template: str | None = None,
+        svg_icon_path: str | None = None,
+    ) -> LpsComponent:
+        """Create an :class:`LpsComponent` from a catalog :class:`Entry`.
+
+        The catalog (Change 006) holds user-curated solutions/patterns
+        with title, description, code, and tags. Many of those are
+        natural "components" for a feature model — e.g. an entry
+        titled "JWT auth in FastAPI" can be dragged into an LPS
+        canvas. This helper does the field-by-field translation.
+
+        ``catalog_entry`` is anything with the right shape (the
+        catalog uses a frozen dataclass but we don't want to couple
+        this module to the catalog's import path at call time — the
+        GUI passes the ``Entry`` it already has in memory).
+        """
+        # The catalog entry exposes: id (str), title, code, language,
+        # description, category (optional), tags (tuple).
+        catalog_meta = {
+            "language": getattr(catalog_entry, "language", "text"),
+            "tags": list(getattr(catalog_entry, "tags", []) or []),
+            "source": "catalog",
+            "catalog_id": getattr(catalog_entry, "id", None),
+        }
+        return self.create_component(
+            name=getattr(catalog_entry, "title", "Untitled"),
+            category=category,
+            description=getattr(catalog_entry, "description", None),
+            code_snippet=getattr(catalog_entry, "code", None),
+            jinja_template=jinja_template,
+            svg_icon_path=svg_icon_path,
+            metadata=catalog_meta,
+        )
+
     # ----- Validation ----------------------------------------------------
 
     def _validate_tree(self, payload: dict[str, Any]) -> str:
         """Validate ``payload`` against the DSL JSON (Contrato 1).
 
+        Two layers:
+
+        1. **Schema check** via :class:`FeatureModelPayload` (pydantic).
+           Catches type errors, missing fields, bad enum values.
+        2. **Semantic check** via :meth:`_validate_tree_semantics`.
+           Catches cross-references (edges / groups pointing at
+           missing nodes) and graph-level invariants (exactly one
+           ROOT node; no duplicate ids; etc.).
+
         Returns the canonical JSON string to be stored. Raises
         :class:`LpsSpecError` with the JSON Pointer path on failure.
         """
-        # Pydantic models live in this same module (kept light to
-        # avoid creating yet another file for a 20-line model).
+        # Layer 1 — schema.
         try:
             FeatureModelPayload.model_validate(payload)
         except PydanticValidationError as exc:
@@ -488,7 +605,91 @@ class LpsService:
                 path=path or "/",
                 errors=errors,
             ) from exc
+
+        # Layer 2 — cross-references and invariants.
+        self._validate_tree_semantics(payload)
+
         return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+    @staticmethod
+    def _validate_tree_semantics(payload: dict[str, Any]) -> None:
+        """Cross-reference + graph-level invariants (no I/O).
+
+        Runs *after* the pydantic schema check, so we can rely on
+        the shape. Raises :class:`LpsSpecError` with ``path=`` set
+        to the JSON Pointer of the first violation.
+        """
+        nodes = payload.get("nodes") or []
+        edges = payload.get("edges") or []
+        groups = payload.get("groups") or []
+
+        # Duplicate node ids.
+        ids: list[str] = [n["id"] for n in nodes]
+        seen: set[str] = set()
+        for nid in ids:
+            if nid in seen:
+                raise LpsSpecError(
+                    "Duplicate node id in feature model",
+                    path=f"/nodes/{ids.index(nid)}/id",
+                    id=nid,
+                )
+            seen.add(nid)
+
+        # Exactly one ROOT (the spec says "1..200" nodes; a model
+        # with no ROOT is a degenerate graph and we reject it).
+        root_count = sum(1 for n in nodes if n["variability"] == "ROOT")
+        if root_count == 0:
+            raise LpsSpecError(
+                "Feature model must have exactly one ROOT node",
+                path="/nodes",
+            )
+        if root_count > 1:
+            raise LpsSpecError(
+                "Feature model must have exactly one ROOT node",
+                path="/nodes",
+                count=root_count,
+            )
+
+        # Edges: source/target must exist.
+        node_id_set = set(ids)
+        for idx, edge in enumerate(edges):
+            if edge["source"] not in node_id_set:
+                raise LpsSpecError(
+                    "Edge source refers to unknown node",
+                    path=f"/edges/{idx}/source",
+                    source=edge["source"],
+                )
+            if edge["target"] not in node_id_set:
+                raise LpsSpecError(
+                    "Edge target refers to unknown node",
+                    path=f"/edges/{idx}/target",
+                    target=edge["target"],
+                )
+            if edge["source"] == edge["target"]:
+                # Self-loop on a relation makes no sense (REQUIRES(a,a)
+                # is trivially true; EXCLUDES(a,a) makes the model UNSAT
+                # the moment a is selected). Reject early.
+                raise LpsSpecError(
+                    "Edge cannot connect a node to itself",
+                    path=f"/edges/{idx}",
+                    node=edge["source"],
+                )
+
+        # Groups: parent + children must exist.
+        for idx, group in enumerate(groups):
+            if group["parent"] not in node_id_set:
+                raise LpsSpecError(
+                    "Group parent refers to unknown node",
+                    path=f"/groups/{idx}/parent",
+                    parent=group["parent"],
+                )
+            for child_idx, child_id in enumerate(group.get("children") or ()):
+                if child_id not in node_id_set:
+                    raise LpsSpecError(
+                        "Group child refers to unknown node",
+                        path=f"/groups/{idx}/children/{child_idx}",
+                        child=child_id,
+                    )
 
     # ----- Row → dataclass helpers ---------------------------------------
 
