@@ -33,16 +33,18 @@ def test_splitter_has_three_children(qapp) -> None:
 
 
 def test_panels_returned_in_left_to_right_order(qapp) -> None:
-    """The first two splitter children are the LeftPanel (explorer host) and
-    the code editor. The third child is the right-column container whose
-    currentWidget is the AI visualizer (explorer mode default)."""
+    """Change 007: the splitter hosts LeftPanel + center_stack + right container.
+    The center_stack swaps between CodeEditor and LpsCanvasView."""
     window = MainWindow()
     fe, ce, vz = window.panels()
     splitter = window.splitter()
     # First child is the LeftPanel container (which hosts the explorer).
     left_panel = window.left_panel()
     assert splitter.widget(0) is left_panel
-    assert splitter.widget(1) is ce
+    # Second is the center_stack (code editor at index 0 in explorer mode).
+    center = splitter.widget(1)
+    assert center is window._center_stack
+    assert center.currentWidget() is ce
     # Third is a container; its currentWidget is the visualizer.
     right_container = splitter.widget(2)
     assert right_container is not None

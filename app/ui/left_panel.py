@@ -23,14 +23,19 @@ from app.ui.file_explorer import FileExplorerPanel
 
 
 class LeftPanelMode(str, Enum):
-    """Identifier for which child of the stack is currently visible.
+    """Identifier for the active left-column mode.
 
     Inherits from ``str`` so :attr:`LeftPanel.mode_changed` payloads
     can be compared against the enum or used as QSettings keys.
+
+    The values are NOT just for the left column — they're the
+    application's "operating mode". Switching to LPS swaps all three
+    columns: palette (left), canvas (center), inspector (right).
     """
 
     EXPLORER = "explorer"
     CATALOG = "catalog"
+    LPS = "lps"
 
 
 class LeftPanel(QWidget):
@@ -53,12 +58,16 @@ class LeftPanel(QWidget):
         self,
         explorer: FileExplorerPanel,
         catalog: CatalogoPanel,
+        palette: object | None = None,
         initial_mode: LeftPanelMode = LeftPanelMode.EXPLORER,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._explorer = explorer
         self._catalog = catalog
+        # ``palette`` is optional for back-compat with the original
+        # 2-mode constructor. When provided, it's shown in LPS mode.
+        self._palette = palette
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -66,9 +75,12 @@ class LeftPanel(QWidget):
 
         self._stack = QStackedWidget(self)
         # addWidget order defines indices — keep these stable, the
-        # ``LeftPanelMode`` values below are intentionally aligned.
+        # ``LeftPanelMode`` values are intentionally aligned.
         self._explorer_index = self._stack.addWidget(self._explorer)  # 0
         self._catalog_index = self._stack.addWidget(self._catalog)    # 1
+        self._palette_index = (
+            self._stack.addWidget(self._palette) if self._palette is not None else 1
+        )                                                          # 2 (or 1 fallback)
         layout.addWidget(self._stack)
 
         # Initial mode (do not emit on construction; the MainWindow
@@ -85,6 +97,10 @@ class LeftPanel(QWidget):
     def show_catalog(self) -> None:
         """Switch the stack to the catalog."""
         self._switch_to(LeftPanelMode.CATALOG)
+
+    def show_lps(self) -> None:
+        """Switch the stack to the LPS palette."""
+        self._switch_to(LeftPanelMode.LPS)
 
     def show_mode(self, mode: LeftPanelMode | str) -> None:
         """Switch to ``mode`` (accepts the enum or its ``.value`` string)."""
@@ -109,18 +125,27 @@ class LeftPanel(QWidget):
         """Direct accessor for the catalog panel."""
         return self._catalog
 
+    def palette(self) -> object | None:
+        """Direct accessor for the LPS palette (may be ``None`` in legacy builds)."""
+        return self._palette
+
     # ----- Internal ---------------------------------------------------------
 
     def _index_for(self, mode: LeftPanelMode) -> int:
         return {
             LeftPanelMode.EXPLORER: self._explorer_index,
             LeftPanelMode.CATALOG: self._catalog_index,
+            LeftPanelMode.LPS: self._palette_index,
         }[mode]
 
     def _switch_to(self, mode: LeftPanelMode) -> None:
         if mode == self._current_mode:
             # No-op; do not emit (avoids spurious QSettings writes
             # on every menu activation).
+            return
+        # If LPS mode is requested without a palette widget, treat
+        # as a silent no-op (legacy 2-mode builds).
+        if mode == LeftPanelMode.LPS and self._palette is None:
             return
         self._current_mode = mode
         self._stack.setCurrentIndex(self._index_for(mode))

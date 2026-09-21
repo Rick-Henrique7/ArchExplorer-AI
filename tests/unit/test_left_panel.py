@@ -120,3 +120,44 @@ def test_initial_mode_can_be_catalog(qapp, tmp_path) -> None:
     )
     assert panel.current_mode() == LeftPanelMode.CATALOG
     assert _visible_widget(panel) is panel.catalog()
+
+
+def test_lps_mode_starts_and_switches(qapp, tmp_path) -> None:
+    """Change 007: LPS mode is the 3rd value of LeftPanelMode."""
+    from app.ui.lps_palette_panel import LpsPalettePanel
+    explorer = FileExplorerPanel(root=tmp_path)
+    catalog = CatalogoPanel()
+    palette = LpsPalettePanel()
+    panel = LeftPanel(
+        explorer=explorer, catalog=catalog, palette=palette,
+        initial_mode=LeftPanelMode.LPS,
+    )
+    assert panel.current_mode() == LeftPanelMode.LPS
+    assert _visible_widget(panel) is palette
+    panel.show_explorer()
+    assert panel.current_mode() == LeftPanelMode.EXPLORER
+    panel.show_lps()
+    assert panel.current_mode() == LeftPanelMode.LPS
+    assert _visible_widget(panel) is palette
+
+
+def test_palette_accessor_returns_none_when_not_provided(qapp, tmp_path) -> None:
+    """Legacy 2-mode constructor leaves palette=None."""
+    explorer = FileExplorerPanel(root=tmp_path)
+    catalog = CatalogoPanel()
+    panel = LeftPanel(explorer=explorer, catalog=catalog)
+    assert panel.palette() is None
+
+
+def test_palette_mode_is_unknown_when_palette_missing(qapp, tmp_path) -> None:
+    """Without a palette widget, show_lps() is a no-op (no crash)."""
+    explorer = FileExplorerPanel(root=tmp_path)
+    catalog = CatalogoPanel()
+    panel = LeftPanel(explorer=explorer, catalog=catalog)
+    received: list[str] = []
+    panel.mode_changed.connect(received.append)
+    panel.show_lps()
+    # Mode doesn't actually flip because there's no palette widget
+    # to show; the signal must NOT fire (avoids stale state).
+    assert received == []
+    assert panel.current_mode() == LeftPanelMode.EXPLORER
