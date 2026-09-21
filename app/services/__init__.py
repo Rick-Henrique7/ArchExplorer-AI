@@ -38,6 +38,15 @@ from app.services.file_manager import (
     FileItem,
     FileManager,
 )
+from app.services.filesystem_agent import FileSystemAgent
+from app.services.llm_adapter import (
+    FILE_TOOLS,
+    LlmAdapter,
+    LlmResponse,
+    LiteLlmAdapter,
+    ToolCall,
+    run_agent_loop,
+)
 from app.services.lps_models import (
     FeatureEdge,
     FeatureGroup,
@@ -74,6 +83,7 @@ __all__ = [
     "EncodedModel",
     "Entry",
     "EXTRACT_UML_STRUCTURE_PROMPT",
+    "FILE_TOOLS",
     "FeatureEdge",
     "FeatureGroup",
     "FeatureModel",
@@ -81,9 +91,13 @@ __all__ = [
     "FileItem",
     "FileManager",
     "FileOperationError",
+    "FileSystemAgent",
     "GENERATE_COMPONENT_PROMPT",
     "IAIProvider",
+    "LlmAdapter",
+    "LlmResponse",
     "LlmToolError",
+    "LiteLlmAdapter",
     "LpsComponent",
     "LpsService",
     "LpsSpecError",
@@ -95,10 +109,12 @@ __all__ = [
     "SYSTEM_PROMPT",
     "Tag",
     "TemplateEngine",
+    "ToolCall",
     "ValidationResult",
     "VariabilitySolver",
     "default_catalog_path",
     "list_starter_uuids",
     "normalize_tags",
+    "run_agent_loop",
     "seed_default_components",
 ]

